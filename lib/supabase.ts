@@ -177,4 +177,139 @@ export async function checkUsernameExists(username: string): Promise<boolean> {
     console.error('Exception when checking username:', err);
     return false;
   }
+}
+
+// Get participants for a specific room
+export async function getRoomParticipants(roomId: string): Promise<{ id: string; username: string }[]> {
+  if (!supabase) {
+    // Mock data for development
+    return [
+      { id: '1', username: 'System' },
+      { id: '2', username: 'TestUser1' },
+    ];
+  }
+
+  try {
+    // Define a type for the expected response structure
+    type ParticipantData = {
+      user_id: string;
+      users: {
+        username: string;
+      } | null;
+    };
+
+    const { data, error } = await supabase
+      .from('room_participants')
+      .select(`
+        user_id,
+        users:user_id (
+          username
+        )
+      `)
+      .eq('room_id', roomId);
+    
+    if (error) {
+      console.error('Error fetching room participants:', error);
+      return [];
+    }
+    
+    // Process the data more carefully with proper type assertions
+    const participants: { id: string; username: string }[] = [];
+    
+    if (data) {
+      for (const item of data as unknown as ParticipantData[]) {
+        try {
+          if (item.user_id) {
+            // Access the username safely, providing a default if not found
+            const username = item.users?.username || 'Unknown User';
+            participants.push({
+              id: item.user_id,
+              username
+            });
+          }
+        } catch (e) {
+          console.error('Error processing participant data:', e);
+        }
+      }
+    }
+    
+    return participants;
+  } catch (err) {
+    console.error('Exception in getRoomParticipants:', err);
+    return [];
+  }
+}
+
+// Check if a room exists
+export async function checkRoomExists(roomId: string): Promise<boolean> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return true; // For development
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('id', roomId)
+      .single();
+    
+    if (error) {
+      return false;
+    }
+    
+    return !!data;
+  } catch (err) {
+    console.error('Exception in checkRoomExists:', err);
+    return false;
+  }
+}
+
+// Get rooms created by a user
+export async function getUserRooms(userId: string): Promise<{ id: string; password: string }[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return []; // For development
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('id, password')
+      .eq('created_by', userId);
+    
+    if (error) {
+      console.error('Error fetching user rooms:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error('Exception in getUserRooms:', err);
+    return [];
+  }
+}
+
+// Get rooms a user has joined
+export async function getJoinedRooms(userId: string): Promise<{ id: string }[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return []; // For development
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('room_participants')
+      .select('room_id')
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Error fetching joined rooms:', error);
+      return [];
+    }
+    
+    return (data || []).map(item => ({
+      id: item.room_id
+    }));
+  } catch (err) {
+    console.error('Exception in getJoinedRooms:', err);
+    return [];
+  }
 } 

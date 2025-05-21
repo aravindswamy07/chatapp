@@ -3,58 +3,83 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type Message = {
   id: string;
+  roomId: string;
   userId: string;
   username: string;
   content: string;
+  replyTo?: string;
+  replyToMessage?: Message;
   createdAt: string;
 };
 
 // Mock messages for development without Supabase
-const mockMessages: Message[] = [
-  { 
-    id: '1', 
-    userId: '1', 
-    username: 'user1', 
-    content: 'Welcome to the chat!', 
-    createdAt: new Date().toISOString() 
-  }
-];
+const mockMessages: Record<string, Message[]> = {
+  'default': [
+    { 
+      id: '1', 
+      roomId: 'default',
+      userId: '1', 
+      username: 'System', 
+      content: 'Welcome to the chat room!', 
+      createdAt: new Date().toISOString() 
+    }
+  ]
+};
 
-export async function sendMessage(message: Omit<Message, 'id' | 'createdAt'>) {
-  console.log('sendMessage function called with:', message);
-  console.log('Using Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+// For mock subscription
+const mockSubscribers: Record<string, ((message: Message) => void)[]> = {
+  'default': []
+};
+
+export async function sendMessage(
+  message: Omit<Message, 'id' | 'createdAt'>,
+  replyTo?: string
+): Promise<Message | null> {
+  console.log('sendMessage function called with:', { message, replyTo });
   
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.log('Using mock data for sending message');
-    const newMessage = {
+    const roomId = message.roomId || 'default';
+    
+    // Initialize room's message array if it doesn't exist
+    if (!mockMessages[roomId]) {
+      mockMessages[roomId] = [];
+    }
+    if (!mockSubscribers[roomId]) {
+      mockSubscribers[roomId] = [];
+    }
+    
+    const newMessage: Message = {
       id: uuidv4(),
+      roomId,
       userId: message.userId,
       username: message.username,
       content: message.content,
+      replyTo,
       createdAt: new Date().toISOString()
     };
-    mockMessages.push(newMessage);
-    // Call all subscribers
-    mockSubscribers.forEach(callback => callback(newMessage));
+    
+    mockMessages[roomId].push(newMessage);
+    
+    // Call all subscribers for this room
+    mockSubscribers[roomId].forEach(callback => callback(newMessage));
     return newMessage;
   }
 
   try {
-    console.log('Sending message to Supabase...');
-    
-    // For debugging, try a direct insert with minimal fields
     const messageData = {
+      room_id: message.roomId,
       user_id: message.userId,
       username: message.username,
       content: message.content,
+      reply_to: replyTo,
       created_at: new Date().toISOString(),
     };
     
     console.log('Message data to insert:', messageData);
     
-    // Try with explicit id
+    // Generate a UUID for the message
     const newId = uuidv4();
-    console.log('Generated UUID:', newId);
     
     const { data, error } = await supabase
       .from('messages')
@@ -66,68 +91,63 @@ export async function sendMessage(message: Omit<Message, 'id' | 'createdAt'>) {
     
     if (error) {
       console.error('Error sending message to Supabase:', error);
-      
-      // Fallback to mock mode for testing
-      console.log('Falling back to mock mode due to error');
-      const mockMessage = {
-        id: newId,
-        userId: message.userId,
-        username: message.username,
-        content: message.content,
-        createdAt: new Date().toISOString()
-      };
-      mockMessages.push(mockMessage);
-      mockSubscribers.forEach(callback => callback(mockMessage));
-      return mockMessage;
+      return null;
     }
     
     console.log('Message sent successfully, response:', data);
     
-    // If no data returned but no error either, create a response object
     if (!data || data.length === 0) {
       console.log('No data returned but no error either, creating response object');
       return {
         id: newId,
+        roomId: message.roomId,
         userId: message.userId,
         username: message.username,
         content: message.content,
+        replyTo,
         createdAt: new Date().toISOString()
       };
     }
     
-    return data?.[0] || null;
+    // Map the snake_case column names from Supabase to camelCase
+    const result = data && data[0];
+    return result ? {
+      id: result.id,
+      roomId: result.room_id,
+      userId: result.user_id,
+      username: result.username,
+      content: result.content,
+      replyTo: result.reply_to,
+      createdAt: result.created_at
+    } : null;
   } catch (err) {
     console.error('Exception when sending message:', err);
-    
-    // Fallback to mock mode for testing
-    console.log('Falling back to mock mode due to exception');
-    const mockMessage = {
-      id: uuidv4(),
-      userId: message.userId,
-      username: message.username,
-      content: message.content,
-      createdAt: new Date().toISOString()
-    };
-    mockMessages.push(mockMessage);
-    mockSubscribers.forEach(callback => callback(mockMessage));
-    return mockMessage;
+    return null;
   }
 }
 
-export async function getMessages() {
-  console.log('Attempting to get messages');
-  console.log('Using Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+export async function getMessages(roomId: string): Promise<Message[]> {
+  console.log('Attempting to get messages for room:', roomId);
   
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.log('Using mock data for messages');
-    return mockMessages;
+    return mockMessages[roomId] || [];
   }
 
   try {
-    console.log('Fetching messages from Supabase...');
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select(`
+        id, 
+        room_id, 
+        user_id, 
+        username, 
+        content, 
+        reply_to, 
+        created_at,
+        messages:reply_to(id, room_id, user_id, username, content, created_at)
+      `)
+      .eq('room_id', roomId)
       .order('created_at', { ascending: true });
     
     if (error) {
@@ -136,71 +156,132 @@ export async function getMessages() {
     }
     
     console.log('Messages fetched successfully, count:', data?.length);
-    console.log('First message (if available):', data?.[0]);
     
     // Map the snake_case column names from Supabase to camelCase for our frontend
-    return (data || []).map(msg => ({
-      id: msg.id,
-      userId: msg.user_id,  // Changed from userId to user_id
-      username: msg.username,
-      content: msg.content,
-      createdAt: msg.created_at,
-    }));
+    return (data || []).map(msg => {
+      const message: Message = {
+        id: msg.id,
+        roomId: msg.room_id,
+        userId: msg.user_id,
+        username: msg.username,
+        content: msg.content,
+        replyTo: msg.reply_to,
+        createdAt: msg.created_at,
+      };
+      
+      // Add replied-to message if it exists
+      if (msg.messages) {
+        message.replyToMessage = {
+          id: msg.messages.id,
+          roomId: msg.messages.room_id,
+          userId: msg.messages.user_id,
+          username: msg.messages.username,
+          content: msg.messages.content,
+          createdAt: msg.messages.created_at
+        };
+      }
+      
+      return message;
+    });
   } catch (err) {
     console.error('Exception when fetching messages:', err);
     return [];
   }
 }
 
-// For mock subscription
-const mockSubscribers: ((message: Message) => void)[] = [];
-
-export function subscribeToMessages(callback: (message: Message) => void) {
-  console.log('Setting up message subscription');
-  console.log('Using Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+export function subscribeToRoomMessages(roomId: string, callback: (message: Message) => void) {
+  console.log('Setting up message subscription for room:', roomId);
   
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.log('Using mock subscription for messages');
-    mockSubscribers.push(callback);
+    
+    // Initialize room's subscriber array if it doesn't exist
+    if (!mockSubscribers[roomId]) {
+      mockSubscribers[roomId] = [];
+    }
+    
+    mockSubscribers[roomId].push(callback);
     return {
       unsubscribe: () => {
-        const index = mockSubscribers.indexOf(callback);
-        if (index !== -1) {
-          mockSubscribers.splice(index, 1);
+        if (mockSubscribers[roomId]) {
+          const index = mockSubscribers[roomId].indexOf(callback);
+          if (index !== -1) {
+            mockSubscribers[roomId].splice(index, 1);
+          }
         }
       }
     };
   }
 
   try {
-    console.log('Setting up Supabase realtime subscription...');
+    console.log('Setting up Supabase realtime subscription for room:', roomId);
+    
     return supabase
-      .channel('public:messages')
+      .channel(`room:${roomId}`)
       .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        (payload) => {
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages',
+          filter: `room_id=eq.${roomId}`
+        }, 
+        async (payload) => {
           console.log('Received new message from Supabase realtime:', payload);
           const newMessage = payload.new as any;
+          
+          let replyToMessage: Message | undefined = undefined;
+          
+          // If this is a reply, fetch the original message
+          if (newMessage.reply_to) {
+            const { data } = await supabase
+              .from('messages')
+              .select('*')
+              .eq('id', newMessage.reply_to)
+              .single();
+              
+            if (data) {
+              replyToMessage = {
+                id: data.id,
+                roomId: data.room_id,
+                userId: data.user_id,
+                username: data.username,
+                content: data.content,
+                createdAt: data.created_at
+              };
+            }
+          }
+          
           callback({
             id: newMessage.id,
-            userId: newMessage.user_id,  // Changed from userId to user_id
+            roomId: newMessage.room_id,
+            userId: newMessage.user_id,
             username: newMessage.username,
             content: newMessage.content,
+            replyTo: newMessage.reply_to,
+            replyToMessage,
             createdAt: newMessage.created_at,
           });
         }
       )
       .subscribe((status) => {
-        console.log('Supabase subscription status:', status);
+        console.log('Supabase subscription status for room:', roomId, status);
       });
   } catch (err) {
     console.error('Exception when setting up subscription:', err);
-    mockSubscribers.push(callback);
+    
+    // Fallback to mock mode
+    if (!mockSubscribers[roomId]) {
+      mockSubscribers[roomId] = [];
+    }
+    mockSubscribers[roomId].push(callback);
+    
     return {
       unsubscribe: () => {
-        const index = mockSubscribers.indexOf(callback);
-        if (index !== -1) {
-          mockSubscribers.splice(index, 1);
+        if (mockSubscribers[roomId]) {
+          const index = mockSubscribers[roomId].indexOf(callback);
+          if (index !== -1) {
+            mockSubscribers[roomId].splice(index, 1);
+          }
         }
       }
     };

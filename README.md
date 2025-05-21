@@ -1,54 +1,68 @@
-# Discord-like Chat App
+# NebulaChat
 
-A Next.js chat application with Supabase backend that mimics Discord's interface. Limited to 10 concurrent users.
+A feature-rich real-time chat application built with Next.js, Tailwind CSS, and Supabase.
 
 ## Features
 
-- User authentication with unique ID generation
-- Real-time chat messaging
-- User presence indication
-- Discord-like UI with Tailwind CSS
-- Limited to 10 concurrent users
+- User authentication with username/password login
+- Create and join private chat rooms (10 users per room limit)
+- Real-time messaging with Supabase Realtime
+- Message reply functionality
+- Mobile-responsive design
+- Room management system
 
-## Setup Instructions
+## Getting Started
 
-1. Clone this repository
+### Prerequisites
+
+- Node.js 14.x or later
+- npm or yarn
+- A Supabase account (free tier is sufficient)
+
+### Setup
+
+1. Clone the repository:
+```
+git clone <repo-url>
+cd chatapp
+```
+
 2. Install dependencies:
-   ```
-   npm install
-   ```
-3. Create a Supabase account and project at https://supabase.io
-4. In your Supabase project, create the following tables:
-   
-   **active_users:**
-   - id (uuid, primary key)
-   - username (text)
-   - created_at (timestamp with time zone, default: now())
+```
+npm install
+# or
+yarn
+```
 
-   **messages:**
-   - id (uuid, primary key)
-   - userId (text) 
-   - username (text)
-   - content (text)
-   - created_at (timestamp with time zone, default: now())
+3. Create a `.env.local` file in the root directory with your Supabase credentials:
+```
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-5. Enable realtime for both tables in the Supabase dashboard
-6. Create a `.env.local` file with your Supabase credentials:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-   ```
-7. Run the development server:
-   ```
-   npm run dev
-   ```
-8. Open [http://localhost:3000](http://localhost:3000) in your browser
+4. Set up your Supabase database by running the SQL script in `enhanced_database_structure.sql` in the Supabase SQL editor.
 
-## How It Works
+5. Run the development server:
+```
+npm run dev
+# or
+yarn dev
+```
 
-1. Users provide a username and password on the homepage
-2. A unique ID is generated for each user
-3. Users can join the chat if there are fewer than 10 active users
-4. In the chat, users can send and receive messages in real-time
-5. The active users list shows all currently connected users (max 10)
-6. Users are automatically removed from active users when they leave 
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Usage
+
+1. Sign up for a new account
+2. Create a new room or join an existing one with a room ID and password
+3. Start chatting!
+
+## Development Notes
+
+- For development without Supabase, the application falls back to mock data.
+- Room IDs are 5-digit numbers and passwords are 7-character alphanumeric strings.
+- Room participants are limited to 10 users per room.
+
+## License
+
+MIT 

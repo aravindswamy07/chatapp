@@ -1,17 +1,17 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { isLoggedIn } from '../lib/auth';
+import { isLoggedIn } from '../../lib/auth';
 
-export default function Home() {
+export default function ChatIndex() {
   const router = useRouter();
   
-  // Check login status and redirect appropriately
+  // Redirect to the appropriate place
   useEffect(() => {
     if (isLoggedIn()) {
-      // If already logged in, go to home page
+      // If logged in, go to home page to select a room
       router.push('/home');
     } else {
-      // Otherwise, redirect to login
+      // If not logged in, go to login
       router.push('/login');
     }
   }, [router]);
