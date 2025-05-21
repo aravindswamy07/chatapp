@@ -231,6 +231,9 @@ ON users FOR SELECT USING (true);
 
 CREATE POLICY "Users can update their own record" 
 ON users FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Anyone can create a user account" 
+ON users FOR INSERT WITH CHECK (true);
 ```
 
 ## Step 9: Create RLS Policies - Rooms

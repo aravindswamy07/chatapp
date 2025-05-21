@@ -164,6 +164,9 @@ ON users FOR SELECT USING (true);
 CREATE POLICY "Users can update their own record" 
 ON users FOR UPDATE USING (auth.uid() = id);
 
+CREATE POLICY "Anyone can create a user account" 
+ON users FOR INSERT WITH CHECK (true);
+
 -- Rooms table policies
 CREATE POLICY "Anyone can view public rooms" 
 ON rooms FOR SELECT USING (NOT is_private OR EXISTS (
