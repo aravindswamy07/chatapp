@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { getCurrentUser, logout, User } from '../../lib/auth';
@@ -6,27 +6,11 @@ import { getMessages, sendMessage, subscribeToRoomMessages, Message } from '../.
 import { getActiveUsers, removeActiveUser } from '../../lib/supabase';
 import { uploadImage, validateFile } from '../../lib/storage';
 import { isRoomAdmin } from '../../lib/admin';
+import { setTypingStatus, subscribeToTypingStatus, clearTypingStatus } from '../../lib/typing';
 import RoomSettings from '../../components/RoomSettings';
+import TypingIndicator from '../../components/TypingIndicator';
 
-export default function ChatRoom() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [activeUsers, setActiveUsers] = useState<{id: string, username: string}[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  const [roomName, setRoomName] = useState('');
-  const [roomDescription, setRoomDescription] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showRoomSettings, setShowRoomSettings] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const { roomId } = router.query;
-  const [isMobile, setIsMobile] = useState(false);
-  const [showUserList, setShowUserList] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadError, setUploadError] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export default function ChatRoom() {  const [messages, setMessages] = useState<Message[]>([]);  const [newMessage, setNewMessage] = useState('');  const [activeUsers, setActiveUsers] = useState<{id: string, username: string}[]>([]);  const [isLoading, setIsLoading] = useState(true);  const [user, setUser] = useState<User | null>(null);  const [roomName, setRoomName] = useState('');  const [roomDescription, setRoomDescription] = useState('');  const [isAdmin, setIsAdmin] = useState(false);  const [showRoomSettings, setShowRoomSettings] = useState(false);  const [typingUsers, setTypingUsers] = useState<string[]>([]);  const [isTyping, setIsTyping] = useState(false);  const messagesEndRef = useRef<HTMLDivElement>(null);  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);  const router = useRouter();  const { roomId } = router.query;  const [isMobile, setIsMobile] = useState(false);  const [showUserList, setShowUserList] = useState(false);  const [selectedFile, setSelectedFile] = useState<File | null>(null);  const [uploadError, setUploadError] = useState('');  const [isUploading, setIsUploading] = useState(false);  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle scroll to bottom on new messages
   useEffect(() => {
@@ -97,6 +81,15 @@ export default function ChatRoom() {
       setMessages((prev) => [...prev, newMessage]);
     });
     
+    // Subscribe to typing status changes
+    const typingSubscription = subscribeToTypingStatus(
+      roomId as string,
+      user.id,
+      (users) => {
+        setTypingUsers(users);
+      }
+    );
+    
     // Poll for active users every 10 seconds
     const intervalId = setInterval(async () => {
       const users = await getActiveUsers();
@@ -106,7 +99,14 @@ export default function ChatRoom() {
     // Clean up on unmount
     return () => {
       subscription.unsubscribe();
+      typingSubscription.unsubscribe();
       clearInterval(intervalId);
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+      }
+      
+      // Clear user typing status when leaving the room
+      clearTypingStatus(roomId as string, user.id);
     };
   }, [router, roomId]);
 
@@ -134,6 +134,32 @@ export default function ChatRoom() {
       
       setSelectedFile(file);
     }
+  };
+
+  // Handle typing status updates
+  const handleMessageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+    
+    // Only update typing status if we have a user and roomId
+    if (!user || !roomId) return;
+    
+    // If user wasn't typing before, set status to typing
+    if (!isTyping) {
+      setIsTyping(true);
+      setTypingStatus(roomId as string, user, true);
+    }
+    
+    // Clear any existing timer
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+    }
+    
+    // Set a timer to clear typing status after 3 seconds of inactivity
+    typingTimerRef.current = setTimeout(() => {
+      setIsTyping(false);
+      setTypingStatus(roomId as string, user, false);
+    }, 3000);
   };
 
   // Handle sending a new message
@@ -170,6 +196,18 @@ export default function ChatRoom() {
       if (response) {
         setNewMessage('');
         setIsUploading(false);
+        
+        // Reset typing status when message is sent
+        if (isTyping) {
+          setIsTyping(false);
+          setTypingStatus(roomId as string, user, false);
+          
+          // Clear any existing timer
+          if (typingTimerRef.current) {
+            clearTimeout(typingTimerRef.current);
+            typingTimerRef.current = null;
+          }
+        }
       } else {
         console.error('Failed to send message, empty response');
         setUploadError('Failed to send message');
@@ -385,6 +423,11 @@ export default function ChatRoom() {
                 No messages yet. Start the conversation!
               </div>
             )}
+            
+            {/* Typing Indicator */}
+            <div className="sticky bottom-0 left-0">
+              <TypingIndicator typingUsers={typingUsers} />
+            </div>
           </div>
           
           {/* Message Input */}
@@ -426,7 +469,7 @@ export default function ChatRoom() {
               <input
                 type="text"
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={handleMessageInputChange}
                 placeholder="Type a message..."
                 className="flex-1 bg-gray-700 text-white p-2 rounded-l focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 disabled={isUploading}
