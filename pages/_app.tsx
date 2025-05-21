@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { isLoggedIn } from '../lib/auth';
 import '../styles/globals.css';
+import Head from 'next/head';
 
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -16,7 +17,16 @@ function MyApp({ Component, pageProps }: AppProps) {
     }
   }, [router.pathname]);
 
-  return <Component {...pageProps} />;
+  return (
+    <>
+      <Head>
+        <title>NebulaChat - Secure Messaging Platform</title>
+        <meta name="description" content="A secure real-time messaging platform with user limits" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      </Head>
+      <Component {...pageProps} />
+    </>
+  );
 }
 
 export default MyApp; 

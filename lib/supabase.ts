@@ -25,21 +25,34 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       eventsPerSecond: 10
     }
   },
+  db: {
+    schema: 'public'
+  },
   global: {
-    fetch: fetch
+    fetch: fetch,
+    headers: { 'x-application-name': 'chatapp' }
   }
 });
 
+// Log that the client was created
+console.log('Supabase client created successfully');
+
 // Test connection
 if (typeof window !== 'undefined') {
-  supabase.from('messages').select('count', { count: 'exact', head: true })
-    .then(({ count, error }) => {
+  console.log('Testing Supabase connection...');
+  // Use an async IIFE to handle errors properly
+  (async () => {
+    try {
+      const { count, error } = await supabase.from('messages').select('count', { count: 'exact', head: true });
       if (error) {
         console.error('Supabase connection test failed:', error);
       } else {
         console.log('Supabase connection successful, message count:', count);
       }
-    });
+    } catch (err) {
+      console.error('Supabase connection test exception:', err);
+    }
+  })();
 }
 
 // Mock implementation for missing Supabase
@@ -134,6 +147,34 @@ export async function removeActiveUser(userId: string) {
     return true;
   } catch (err) {
     console.error('Exception when removing active user:', err);
+    return false;
+  }
+}
+
+export async function checkUsernameExists(username: string): Promise<boolean> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    console.log('Using mock data for username check');
+    // For mock mode, consider these usernames taken
+    const takenUsernames = ['admin', 'user1', 'test123'];
+    return takenUsernames.includes(username);
+  }
+
+  try {
+    console.log('Checking if username exists in Supabase:', username);
+    const { data, error } = await supabase
+      .from('active_users')
+      .select('username')
+      .eq('username', username)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('Error checking username:', error);
+      return false;
+    }
+    
+    return !!data;
+  } catch (err) {
+    console.error('Exception when checking username:', err);
     return false;
   }
 } 

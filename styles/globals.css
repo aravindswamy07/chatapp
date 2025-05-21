@@ -4,8 +4,32 @@
 
 body {
   @apply bg-gray-900 text-white;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
 }
 
+/* Improve mobile tap targets */
+button, 
+a, 
+input, 
+textarea {
+  touch-action: manipulation;
+}
+
+/* Disable pull-to-refresh on mobile */
+html, body {
+  overscroll-behavior-y: none;
+}
+
+/* Prevent iOS text size adjustment */
+html {
+  -webkit-text-size-adjust: none;
+}
+
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -20,4 +44,16 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-500;
+}
+
+/* Mobile optimizations */
+@media screen and (max-width: 640px) {
+  input, button, textarea {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+}
+
+/* App brand colors */
+.nebula-gradient {
+  @apply bg-gradient-to-r from-indigo-600 to-purple-600;
 } 

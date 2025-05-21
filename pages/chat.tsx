@@ -13,11 +13,27 @@ export default function Chat() {
   const [user, setUser] = useState<User | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const [isMobile, setIsMobile] = useState(false);
+  const [showUserList, setShowUserList] = useState(false);
 
   // Handle scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkIfMobile);
+    };
+  }, []);
 
   // Initial setup - load messages and subscribe to new ones
   useEffect(() => {
@@ -79,18 +95,38 @@ export default function Chat() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!newMessage.trim() || !user) return;
+    console.log('Send button clicked', { newMessage, user });
+    
+    if (!newMessage.trim() || !user) {
+      console.log('Missing message or user', { message: newMessage, user });
+      return;
+    }
     
     try {
-      await sendMessage({
+      console.log('Attempting to send message to backend');
+      
+      // For debugging - force a message directly
+      const messageToSend = {
         userId: user.id,
         username: user.username,
         content: newMessage
-      });
+      };
       
-      setNewMessage('');
+      console.log('Message payload:', messageToSend);
+      
+      const response = await sendMessage(messageToSend);
+      console.log('Send message response:', response);
+      
+      // If the message was sent successfully, clear the input
+      if (response) {
+        setNewMessage('');
+      } else {
+        console.error('Failed to send message, empty response');
+        alert('Failed to send message. Check console for details.');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
+      alert('Error sending message. Check console for details.');
     }
   };
 
@@ -135,18 +171,29 @@ export default function Chat() {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <Head>
-        <title>Chat Server | Discord-like Chat</title>
+        <title>NebulaChat | Secure Messaging</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       </Head>
       
       {/* Header */}
       <header className="bg-gray-800 shadow-md py-3 px-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold text-indigo-400">Discord-like Chat</h1>
+          <div className="flex items-center">
+            {isMobile && (
+              <button
+                onClick={() => setShowUserList(!showUserList)}
+                className="mr-3 text-indigo-400"
+              >
+                {showUserList ? '✕' : '☰'}
+              </button>
+            )}
+            <h1 className="text-xl font-bold text-indigo-400">NebulaChat</h1>
+          </div>
           
           <div className="flex items-center space-x-4">
             <span className="text-gray-300">
               <span className="font-medium text-green-400">{user?.username}</span>
-              <span className="text-xs text-gray-500 ml-2">#{user?.id.slice(0, 8)}</span>
+              <span className="text-xs text-gray-500 ml-2 hidden sm:inline">#{user?.id.slice(0, 8)}</span>
             </span>
             
             <button
@@ -161,9 +208,14 @@ export default function Chat() {
       
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar - Users list */}
-        <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
+        <aside 
+          className={`${isMobile 
+            ? `fixed top-[60px] bottom-0 z-10 ${showUserList ? 'left-0' : '-left-64'} transition-all duration-300`
+            : 'relative'
+          } w-64 bg-gray-800 border-r border-gray-700 flex flex-col`}
+        >
           <div className="px-4 py-3 border-b border-gray-700">
-            <h2 className="text-gray-300 font-medium">Online Users ({activeUsers.length}/10)</h2>
+            <h2 className="text-gray-300 font-medium">Active Users ({activeUsers.length}/10)</h2>
           </div>
           
           <div className="overflow-y-auto flex-1">
@@ -189,7 +241,7 @@ export default function Chat() {
                 className={`flex ${message.userId === user?.id ? 'justify-end' : 'justify-start'}`}
               >
                 <div 
-                  className={`max-w-3/4 rounded-lg px-4 py-2 ${
+                  className={`max-w-xs sm:max-w-sm md:max-w-md rounded-lg px-4 py-2 ${
                     message.userId === user?.id 
                       ? 'bg-indigo-600 text-white' 
                       : 'bg-gray-800 text-gray-200'
@@ -205,7 +257,7 @@ export default function Chat() {
                       #{message.userId.slice(0, 8)}
                     </span>
                   </div>
-                  <div>{message.content}</div>
+                  <div className="break-words">{message.content}</div>
                 </div>
               </div>
             ))}
@@ -224,8 +276,8 @@ export default function Chat() {
               />
               <button
                 type="submit"
-                disabled={!newMessage.trim()}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md disabled:opacity-50"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md"
+                onClick={() => console.log('Send button clicked (inline)')}
               >
                 Send
               </button>
@@ -233,6 +285,14 @@ export default function Chat() {
           </div>
         </main>
       </div>
+      
+      {/* Overlay for mobile when sidebar is shown */}
+      {isMobile && showUserList && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-0"
+          onClick={() => setShowUserList(false)}
+        />
+      )}
     </div>
   );
 } 
