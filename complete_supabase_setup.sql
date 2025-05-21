@@ -301,9 +301,12 @@ ALTER TABLE room_participants ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT 
 CREATE OR REPLACE FUNCTION set_creator_as_admin()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Insert a record into room_participants making the creator an admin
-  INSERT INTO room_participants (room_id, user_id, is_admin)
-  VALUES (NEW.id, NEW.created_by, TRUE);
+  -- Only insert a record if created_by is not null
+  IF NEW.created_by IS NOT NULL THEN
+    -- Insert a record into room_participants making the creator an admin
+    INSERT INTO room_participants (room_id, user_id, is_admin)
+    VALUES (NEW.id, NEW.created_by, TRUE);
+  END IF;
   
   RETURN NEW;
 END;
@@ -386,6 +389,6 @@ ON user_typing FOR DELETE USING (user_id = auth.uid());
 -- ===================================================
 
 -- Create a default room if it doesn't exist
-INSERT INTO rooms (id, name, description, is_private)
-VALUES ('default', 'General Chat', 'Welcome to NebulaChat!', false)
+INSERT INTO rooms (id, name, description, created_by, is_private)
+VALUES ('default', 'General Chat', 'Welcome to NebulaChat!', NULL, false)
 ON CONFLICT (id) DO NOTHING; 
