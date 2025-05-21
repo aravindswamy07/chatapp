@@ -156,32 +156,48 @@ export async function login(username: string, password: string): Promise<User | 
       // If that fails (user doesn't exist in auth), create a new auth user
       if (signInError) {
         console.log('Auth user does not exist yet, creating one...');
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: `${username}@gmail.com`,
-          password: password,
-          options: {
-            data: {
-              username: username,
-            }
-          }
-        });
         
-        if (!authError && authData.user) {
-          console.log('Created auth user for legacy account');
-          
-          // Force a login to create a valid session
-          const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
+        // First, check if we can directly sign up without email confirmation
+        try {
+          // Try using admin functions or direct signup without confirmation
+          const { data: authData, error: authError } = await supabase.auth.signUp({
             email: `${username}@gmail.com`,
             password: password,
+            options: {
+              data: {
+                username: username,
+              },
+              emailRedirectTo: window.location.origin
+            }
           });
           
-          if (sessionError) {
-            console.error('Failed to create session after signup:', sessionError);
+          if (!authError && authData.user) {
+            console.log('Created auth user for legacy account');
+            
+            // Since we can't disable email confirmation directly through the client API,
+            // we'll update the user record directly to use the legacy ID
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({ auth_id: authData.user.id })
+              .eq('id', legacyData.id);
+              
+            if (updateError) {
+              console.error('Failed to link auth user to legacy account:', updateError);
+            }
+            
+            // Since we can't sign in yet due to email confirmation,
+            // continue with the legacy login but store the auth info
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('pendingAuthConfirmation', JSON.stringify({
+                email: `${username}@gmail.com`,
+                auth_id: authData.user.id
+              }));
+            }
           } else {
-            console.log('Successfully created auth session for legacy user');
+            console.error('Failed to create auth user for legacy account:', authError);
           }
-        } else {
-          console.error('Failed to create auth user for legacy account:', authError);
+        } catch (err) {
+          console.error('Exception creating auth user:', err);
         }
       } else {
         console.log('Successfully signed in with existing auth credentials');

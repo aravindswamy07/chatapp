@@ -456,4 +456,127 @@ BEGIN
   
   RETURN v_id;
 END;
-$$ LANGUAGE plpgsql; 
+$$ LANGUAGE plpgsql;
+
+-- ===================================================
+-- 11. ADD LEGACY AUTH SUPPORT
+-- ===================================================
+
+-- Create a custom function to check access based on legacy user ID header
+CREATE OR REPLACE FUNCTION auth.check_legacy_user_id()
+RETURNS UUID AS $$
+DECLARE
+  legacy_user_id UUID;
+BEGIN
+  -- Get the legacy user ID from the request header
+  legacy_user_id := NULLIF(current_setting('request.headers.x-legacy-user-id', TRUE), '')::UUID;
+  
+  -- Return the legacy user ID if present, otherwise NULL
+  RETURN legacy_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Update RLS policies to support both auth.uid() and legacy user ID
+
+-- Modify rooms table policies
+DROP POLICY IF EXISTS "Anyone can create rooms" ON rooms;
+CREATE POLICY "Anyone can create rooms" 
+ON rooms FOR INSERT WITH CHECK (
+  auth.uid() = created_by OR 
+  auth.check_legacy_user_id() = created_by
+);
+
+DROP POLICY IF EXISTS "Room creators and admins can update rooms" ON rooms;
+CREATE POLICY "Room creators and admins can update rooms" 
+ON rooms FOR UPDATE USING (
+  auth.uid() = created_by OR 
+  auth.check_legacy_user_id() = created_by OR
+  EXISTS (
+    SELECT 1 FROM room_participants 
+    WHERE room_participants.room_id = rooms.id 
+    AND (room_participants.user_id = auth.uid() OR room_participants.user_id = auth.check_legacy_user_id())
+    AND room_participants.is_admin = true
+  )
+);
+
+DROP POLICY IF EXISTS "Room creators and admins can delete rooms" ON rooms;
+CREATE POLICY "Room creators and admins can delete rooms" 
+ON rooms FOR DELETE USING (
+  auth.uid() = created_by OR
+  auth.check_legacy_user_id() = created_by OR
+  EXISTS (
+    SELECT 1 FROM room_participants 
+    WHERE room_participants.room_id = rooms.id 
+    AND (room_participants.user_id = auth.uid() OR room_participants.user_id = auth.check_legacy_user_id())
+    AND room_participants.is_admin = true
+  )
+);
+
+-- Modify messages table policies
+DROP POLICY IF EXISTS "Anyone can create messages in rooms they participate in" ON messages;
+CREATE POLICY "Anyone can create messages in rooms they participate in" 
+ON messages FOR INSERT WITH CHECK (
+  (user_id = auth.uid() OR user_id = auth.check_legacy_user_id()) AND
+  EXISTS (
+    SELECT 1 FROM room_participants
+    WHERE room_participants.room_id = messages.room_id
+    AND (room_participants.user_id = auth.uid() OR room_participants.user_id = auth.check_legacy_user_id())
+  )
+);
+
+DROP POLICY IF EXISTS "Users can update their own messages" ON messages;
+CREATE POLICY "Users can update their own messages" 
+ON messages FOR UPDATE USING (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+);
+
+DROP POLICY IF EXISTS "Users can delete their own messages" ON messages;
+CREATE POLICY "Users can delete their own messages" 
+ON messages FOR DELETE USING (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+);
+
+-- Modify active users policies
+DROP POLICY IF EXISTS "Users can insert their own active status" ON active_users;
+CREATE POLICY "Users can insert their own active status" 
+ON active_users FOR INSERT WITH CHECK (
+  id = auth.uid() OR id = auth.check_legacy_user_id()
+);
+
+DROP POLICY IF EXISTS "Users can update their own active status" ON active_users;
+CREATE POLICY "Users can update their own active status" 
+ON active_users FOR UPDATE USING (
+  id = auth.uid() OR id = auth.check_legacy_user_id()
+);
+
+-- Modify room participants policies
+DROP POLICY IF EXISTS "Anyone can join rooms" ON room_participants;
+CREATE POLICY "Anyone can join rooms" 
+ON room_participants FOR INSERT WITH CHECK (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+);
+
+DROP POLICY IF EXISTS "Users can leave rooms they joined" ON room_participants;
+CREATE POLICY "Users can leave rooms they joined" 
+ON room_participants FOR DELETE USING (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+);
+
+-- Modify typing status policies
+DROP POLICY IF EXISTS "Users can insert their own typing status" ON user_typing;
+CREATE POLICY "Users can insert their own typing status" 
+ON user_typing FOR INSERT WITH CHECK (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+);
+
+DROP POLICY IF EXISTS "Users can update their own typing status" ON user_typing;
+CREATE POLICY "Users can update their own typing status" 
+ON user_typing FOR UPDATE USING (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+);
+
+DROP POLICY IF EXISTS "Users can delete their own typing status" ON user_typing;
+CREATE POLICY "Users can delete their own typing status" 
+ON user_typing FOR DELETE USING (
+  user_id = auth.uid() OR user_id = auth.check_legacy_user_id()
+); 

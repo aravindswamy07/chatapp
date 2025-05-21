@@ -36,6 +36,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // Function to get an authenticated Supabase client with JWT token
 export const getAuthenticatedClient = async () => {
+  // First try to get the session from Supabase Auth
   const { data } = await supabase.auth.getSession();
   
   // If we have a session with a valid access token
@@ -56,6 +57,37 @@ export const getAuthenticatedClient = async () => {
     });
     
     return authClient;
+  }
+  
+  // Fallback for legacy users: Check if we have a user in storage
+  if (typeof window !== 'undefined') {
+    const userStr = sessionStorage.getItem('currentUser');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        console.log('Found legacy user in storage, creating custom headers with user ID:', user.id);
+        
+        // Create a client with custom headers that include the user ID
+        // This allows our RLS policies to use this header in addition to auth.uid()
+        const legacyClient = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+          },
+          global: {
+            headers: {
+              // Add a custom header with the user ID
+              'x-legacy-user-id': user.id,
+            },
+          },
+        });
+        
+        console.log('Using legacy authenticated client with custom headers');
+        return legacyClient;
+      } catch (e) {
+        console.error('Error parsing user from storage:', e);
+      }
+    }
   }
   
   console.log('No authenticated session found, using anonymous client');
