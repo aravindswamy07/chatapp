@@ -35,6 +35,12 @@ export async function createUser(username: string, password: string): Promise<Us
     
     if (error) {
       console.error('Error creating user:', error);
+      
+      // Add specific check for missing password column
+      if (error.message && error.message.includes('password') && error.message.includes('column')) {
+        throw new Error('Database setup issue: password column missing. Please run the SQL setup script in Supabase.');
+      }
+      
       return null;
     }
     
@@ -58,15 +64,26 @@ export async function login(username: string, password: string): Promise<User | 
       .eq('password', password) // In a real app, we'd verify a hash
       .single();
     
-    if (error || !data) {
+    if (error) {
       console.error('Login error:', error);
+      
+      // Add specific check for missing password column
+      if (error.message && error.message.includes('password') && error.message.includes('column')) {
+        throw new Error('Database setup issue: password column missing. Please run the SQL setup script in Supabase.');
+      }
+      
+      return null;
+    }
+    
+    if (!data) {
+      console.error('No user found with those credentials');
       return null;
     }
     
     // Update last login time
     await supabase
       .from('users')
-      .update({ last_login: new Date().toISOString() })
+      .update({ last_seen: new Date().toISOString() })
       .eq('id', data.id);
     
     // Store in session storage for persistence across page refreshes
@@ -84,7 +101,7 @@ export async function login(username: string, password: string): Promise<User | 
     return user;
   } catch (err) {
     console.error('Exception in login:', err);
-    return null;
+    throw err;
   }
 }
 
