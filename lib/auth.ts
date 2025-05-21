@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { supabase } from './supabase';
+import { supabase, getAuthenticatedClient } from './supabase';
 
 export type User = {
   id: string;
@@ -274,16 +274,32 @@ export function generateRoomPassword(): string {
 
 export async function createRoom(userId: string): Promise<{ roomId: string, password: string } | null> {
   try {
+    console.log('Creating room for user:', userId);
+    
+    // Get an authenticated client
+    const authClient = await getAuthenticatedClient();
+    
     // Generate room ID and password
-    const { data: roomIdData } = await supabase.rpc('generate_room_id');
+    const { data: roomIdData, error: rpcError } = await authClient.rpc('generate_room_id');
+    if (rpcError) {
+      console.error('Error generating room ID:', rpcError);
+      return null;
+    }
+    
     const roomId = roomIdData as string;
     const password = generateRoomPassword();
     
-    // Create room
-    const { error } = await supabase
+    console.log('Generated room ID:', roomId, 'with password (length):', password.length);
+    
+    // Create room - get the current auth session first
+    const { data: sessionData } = await authClient.auth.getSession();
+    console.log('Current session exists:', !!sessionData?.session);
+    
+    const { error } = await authClient
       .from('rooms')
       .insert({
         id: roomId,
+        name: `Room ${roomId.substring(0, 4)}`,
         password,
         created_by: userId
       });
@@ -294,12 +310,18 @@ export async function createRoom(userId: string): Promise<{ roomId: string, pass
     }
     
     // Add creator as first participant
-    await supabase
+    const { error: participantError } = await authClient
       .from('room_participants')
       .insert({
         room_id: roomId,
         user_id: userId
       });
+    
+    if (participantError) {
+      console.error('Error adding room participant:', participantError);
+      // Room was created but participant wasn't added
+      // We could try to clean up by deleting the room
+    }
     
     return { roomId, password };
   } catch (err) {
@@ -310,8 +332,13 @@ export async function createRoom(userId: string): Promise<{ roomId: string, pass
 
 export async function joinRoom(roomId: string, password: string, userId: string): Promise<boolean> {
   try {
+    console.log('Joining room:', roomId, 'for user:', userId);
+    
+    // Get an authenticated client
+    const authClient = await getAuthenticatedClient();
+    
     // Verify room exists with matching password
-    const { data: room, error } = await supabase
+    const { data: room, error } = await authClient
       .from('rooms')
       .select('id')
       .eq('id', roomId)
@@ -319,25 +346,30 @@ export async function joinRoom(roomId: string, password: string, userId: string)
       .single();
     
     if (error || !room) {
-      console.error('Room not found or incorrect password');
+      console.error('Room not found or incorrect password:', error);
       return false;
     }
     
     // Check if user is already in room
-    const { data: existingParticipant } = await supabase
+    const { data: existingParticipant, error: checkError } = await authClient
       .from('room_participants')
       .select('user_id')
       .eq('room_id', roomId)
       .eq('user_id', userId)
       .single();
     
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned" which is fine
+      console.error('Error checking existing participant:', checkError);
+    }
+    
     if (existingParticipant) {
       // User is already in the room, which is fine
+      console.log('User is already in the room');
       return true;
     }
     
     // Check room participant count
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await authClient
       .from('room_participants')
       .select('user_id', { count: 'exact' })
       .eq('room_id', roomId);
@@ -353,7 +385,7 @@ export async function joinRoom(roomId: string, password: string, userId: string)
     }
     
     // Add user to room
-    const { error: joinError } = await supabase
+    const { error: joinError } = await authClient
       .from('room_participants')
       .insert({
         room_id: roomId,

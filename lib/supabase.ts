@@ -34,6 +34,34 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+// Function to get an authenticated Supabase client with JWT token
+export const getAuthenticatedClient = async () => {
+  const { data } = await supabase.auth.getSession();
+  
+  // If we have a session with a valid access token
+  if (data?.session?.access_token) {
+    console.log('Using authenticated Supabase client (session found)');
+    
+    // Create a new client with the auth headers
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+      global: {
+        headers: {
+          'Authorization': `Bearer ${data.session.access_token}`,
+        },
+      },
+    });
+    
+    return authClient;
+  }
+  
+  console.log('No authenticated session found, using anonymous client');
+  return supabase;
+};
+
 // Log that the client was created
 console.log('Supabase client created successfully');
 

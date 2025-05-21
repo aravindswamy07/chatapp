@@ -30,6 +30,11 @@ We encountered an error when creating rooms: "Could not find the 'password' colu
 
 This happened because our code was trying to store a password in the rooms table, but our Supabase schema didn't have this column defined.
 
+## Issue 7: Authentication Token Not Used for Room Creation
+We encountered a 401 Unauthorized error when creating rooms: "new row violates row-level security policy for table 'rooms'".
+
+This happened because the Supabase client wasn't using the JWT token from the authenticated session when making requests to create rooms.
+
 ## Complete Fix Applied
 1. Added a `password` column to the `users` table in the setup files
 2. Added an INSERT policy for the users table to allow user creation
@@ -45,6 +50,10 @@ This happened because our code was trying to store a password in the rooms table
    - If that fails, it falls back to the old direct database check
    - For existing users, it attempts to create a matching auth user for future logins
 7. Added a `password` column to the `rooms` table for room access control
+8. Created a helper function to get an authenticated Supabase client:
+   - Retrieves the current session with JWT token
+   - Creates a new client with proper Authorization headers
+   - Updates all database operations to use this authenticated client
 
 ## How to Apply This Fix
 1. Go to the Supabase SQL Editor
@@ -61,12 +70,13 @@ ON users FOR INSERT WITH CHECK (true);
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS password TEXT;
 ```
 
-3. Update your code to use the latest version of auth.ts
+3. Update your code to use the latest version of auth.ts and supabase.ts
 
 ## Individual Fix Scripts
 For targeted fixes, you can use these individual scripts:
 - `add_rls_policy.sql` - Adds the missing RLS policy for user creation
 - `add_room_password_column.sql` - Adds the password column to rooms table
+- `fix_existing_rooms.sql` - Adds random passwords to any existing rooms without passwords
 
 ## Important Notes
 1. Each username must be unique as we're using it to create email addresses in the format `username@gmail.com`
@@ -75,12 +85,14 @@ For targeted fixes, you can use these individual scripts:
 
 3. Existing users can continue using their accounts, while new users will be properly set up with the enhanced security
 
-4. This implementation now utilizes Supabase's built-in authentication system which:
+4. For room creation and joining to work correctly, users must be authenticated with a valid JWT token
+
+5. This implementation now utilizes Supabase's built-in authentication system which:
    - Provides proper JWT token authentication
    - Securely handles passwords (no plaintext storage)
    - Generates secure user IDs
 
-5. For full production-readiness, consider further enhancements:
+6. For full production-readiness, consider further enhancements:
    - Implement real email verification
    - Add password reset functionality
    - Add profile management 
