@@ -23,10 +23,26 @@ export async function createUser(username: string, password: string): Promise<Us
       throw new Error('Username already exists');
     }
     
-    // Insert new user
+    // First create an auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: `${username}@nebulachat.app`, // Using a placeholder email with the username
+      password: password,
+    });
+    
+    if (authError) {
+      console.error('Error creating auth user:', authError);
+      throw new Error(`Authentication error: ${authError.message}`);
+    }
+    
+    if (!authData.user || !authData.user.id) {
+      throw new Error('Failed to create auth user - no user ID returned');
+    }
+    
+    // Now insert into the users table with the auth user ID
     const { data, error } = await supabase
       .from('users')
       .insert({
+        id: authData.user.id, // Use the ID from the auth user
         username,
         password, // In a real app, this would be hashed
       })
@@ -39,6 +55,13 @@ export async function createUser(username: string, password: string): Promise<Us
       // Add specific check for missing password column
       if (error.message && error.message.includes('password') && error.message.includes('column')) {
         throw new Error('Database setup issue: password column missing. Please run the SQL setup script in Supabase.');
+      }
+      
+      // Try to clean up the auth user if the DB insert failed
+      try {
+        await supabase.auth.admin.deleteUser(authData.user.id);
+      } catch (cleanupErr) {
+        console.error('Failed to clean up auth user after insert error:', cleanupErr);
       }
       
       return null;
@@ -57,11 +80,22 @@ export async function createUser(username: string, password: string): Promise<Us
 // Log in with username and password
 export async function login(username: string, password: string): Promise<User | null> {
   try {
+    // First log in with email (using username) and password via Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: `${username}@nebulachat.app`, // Match the email format used during signup
+      password: password,
+    });
+    
+    if (authError || !authData.user) {
+      console.error('Auth login error:', authError);
+      return null;
+    }
+    
+    // Get the user data from our users table using the auth ID
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('username', username)
-      .eq('password', password) // In a real app, we'd verify a hash
+      .eq('id', authData.user.id)
       .single();
     
     if (error) {
@@ -147,11 +181,18 @@ export function getCurrentUser() {
 }
 
 export function logout() {
+  // Clear local state and storage
   currentUser = null;
   if (typeof window !== 'undefined') {
     sessionStorage.removeItem('currentUser');
     sessionStorage.removeItem('currentRoom');
   }
+  
+  // Sign out from Supabase Auth
+  supabase.auth.signOut()
+    .catch(error => {
+      console.error("Error signing out from Supabase Auth:", error);
+    });
 }
 
 export function isLoggedIn() {

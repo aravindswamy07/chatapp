@@ -1,4 +1,4 @@
-# Authentication Fix - Missing Password Column & RLS Policy
+# Authentication Fix - Complete Auth Solution
 
 ## Issue 1: Missing Password Column
 We encountered an error during user signup: "Could not find the 'password' column of 'users' in the schema cache". 
@@ -10,12 +10,22 @@ After adding the password column, we encountered a 401 Unauthorized error with t
 
 This occurred because we enabled Row Level Security (RLS) on the users table but didn't add an INSERT policy to allow new user creation during signup.
 
-## Fixes Applied
+## Issue 3: User ID Not Being Set
+After fixing the RLS policy, we encountered a 400 Bad Request error with the message: "null value in column 'id' of relation 'users' violates not-null constraint".
+
+This occurred because our users table requires an ID that references auth.users(id), but we weren't creating a Supabase auth user first.
+
+## Complete Fix Applied
 1. Added a `password` column to the `users` table in the setup files
 2. Added an INSERT policy for the users table to allow user creation
 3. Improved error handling in auth.ts for better debugging
+4. Implemented proper Supabase Auth integration:
+   - Now creating auth users first using supabase.auth.signUp()
+   - Using the generated auth user ID for our users table
+   - Properly logging in with supabase.auth.signInWithPassword()
+   - Properly logging out with supabase.auth.signOut()
 
-## How to Apply These Fixes
+## How to Apply This Fix
 1. Go to the Supabase SQL Editor
 2. Run the following SQL:
 ```sql
@@ -27,24 +37,17 @@ CREATE POLICY "Anyone can create a user account"
 ON users FOR INSERT WITH CHECK (true);
 ```
 
-Alternatively, run the individual fix scripts:
-- `fix-user-insert-policy.sql` - Adds the missing RLS policy
+3. Update your code to use the latest version of auth.ts
 
 ## Important Notes
-1. **Security Warning**: This implementation stores passwords as plaintext in the database, which is not secure for a production application. 
+1. Each username must be unique as we're using it to create email addresses in the format `username@nebulachat.app`
 
-2. **Better Alternative**: For a production application, we should consider:
-   - Using Supabase's built-in auth system with JWT tokens
-   - Implementing proper password hashing using bcrypt/Argon2
-   - Setting up proper auth flows with email verification
+2. This implementation now utilizes Supabase's built-in authentication system which:
+   - Provides proper JWT token authentication
+   - Securely handles passwords (no plaintext storage)
+   - Generates secure user IDs
 
-3. **Next Steps**: After running the updated SQL in Supabase, the signup and login functionality should work correctly.
-
-## How to Apply This Fix
-1. Go to the Supabase SQL Editor
-2. Run the following SQL:
-```sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT;
-```
-
-This is a temporary fix to get the application working. In a future update, we should implement proper authentication security. 
+3. For full production-readiness, consider further enhancements:
+   - Implement email verification
+   - Add password reset functionality
+   - Add profile management 
