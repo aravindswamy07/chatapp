@@ -5,6 +5,38 @@
 -- Execute this in your Supabase SQL Editor to recreate the database from scratch
 
 -- ===================================================
+-- 0. DROP EXISTING POLICIES (TO AVOID CONFLICTS)
+-- ===================================================
+
+-- Drop existing policies to avoid conflicts
+DO $$
+DECLARE
+    policy_record RECORD;
+BEGIN
+    FOR policy_record IN 
+        SELECT policyname, tablename 
+        FROM pg_policies 
+        WHERE schemaname = 'public' 
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON %I', 
+                       policy_record.policyname, 
+                       policy_record.tablename);
+    END LOOP;
+    
+    -- Also drop storage policies
+    FOR policy_record IN 
+        SELECT policyname, tablename 
+        FROM pg_policies 
+        WHERE schemaname = 'storage' 
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON storage.%I', 
+                       policy_record.policyname, 
+                       policy_record.tablename);
+    END LOOP;
+END
+$$;
+
+-- ===================================================
 -- 1. BASE DATABASE STRUCTURE
 -- ===================================================
 
@@ -46,6 +78,19 @@ CREATE TABLE IF NOT EXISTS active_users (
   last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Make sure the last_seen column exists in active_users (in case table already exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'active_users' AND column_name = 'last_seen'
+  ) THEN
+    ALTER TABLE active_users ADD COLUMN last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+  END IF;
+END
+$$;
+
 -- Create room participants table (for tracking who's in which room)
 CREATE TABLE IF NOT EXISTS room_participants (
   room_id TEXT REFERENCES rooms(id) ON DELETE CASCADE,
@@ -65,7 +110,19 @@ CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_room_participants_user_id ON room_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_active_users_last_seen ON active_users(last_seen);
+
+-- Make sure to create the last_seen index only if the column exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'active_users' AND column_name = 'last_seen'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_active_users_last_seen ON active_users(last_seen)';
+  END IF;
+END
+$$;
 
 -- ===================================================
 -- 3. REALTIME PUBLICATION SETUP
@@ -143,9 +200,15 @@ ON rooms FOR DELETE USING (
 CREATE POLICY "Anyone can view messages in rooms they participate in" 
 ON messages FOR SELECT USING (
   EXISTS (
-    SELECT 1 FROM room_participants
-    WHERE room_participants.room_id = messages.room_id
-    AND room_participants.user_id = auth.uid()
+    SELECT 1 FROM rooms
+    WHERE rooms.id = messages.room_id
+    AND (NOT rooms.is_private OR 
+      EXISTS (
+        SELECT 1 FROM room_participants
+        WHERE room_participants.room_id = messages.room_id
+        AND room_participants.user_id = auth.uid()
+      )
+    )
   )
 );
 
@@ -210,15 +273,22 @@ VALUES ('chat-images', 'Chat Message Images', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Set up storage permissions to allow authenticated users to upload files
-CREATE POLICY "Allow authenticated users to upload images"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'chat-images');
-
--- Allow anyone to view images (since our messages are public in this demo)
-CREATE POLICY "Allow public read access to chat images"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'chat-images');
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'objects' AND schemaname = 'storage') THEN
+    EXECUTE 'CREATE POLICY "Allow authenticated users to upload images"
+    ON storage.objects FOR INSERT
+    TO authenticated
+    WITH CHECK (bucket_id = ''chat-images'')';
+    
+    EXECUTE 'CREATE POLICY "Allow public read access to chat images"
+    ON storage.objects FOR SELECT
+    USING (bucket_id = ''chat-images'')';
+  ELSE 
+    RAISE NOTICE 'Storage objects table does not exist yet, skipping policies';
+  END IF;
+END
+$$;
 
 -- ===================================================
 -- 6. ADMIN PRIVILEGES
