@@ -15,6 +15,11 @@ After fixing the RLS policy, we encountered a 400 Bad Request error with the mes
 
 This occurred because our users table requires an ID that references auth.users(id), but we weren't creating a Supabase auth user first.
 
+## Issue 4: Email Domain Validation
+We encountered an error: "Email address 'username@nebulachat.app' is invalid".
+
+This occurred because Supabase's auth system validates email addresses and was rejecting our custom domain.
+
 ## Complete Fix Applied
 1. Added a `password` column to the `users` table in the setup files
 2. Added an INSERT policy for the users table to allow user creation
@@ -24,6 +29,7 @@ This occurred because our users table requires an ID that references auth.users(
    - Using the generated auth user ID for our users table
    - Properly logging in with supabase.auth.signInWithPassword()
    - Properly logging out with supabase.auth.signOut()
+5. Used a valid email domain (gmail.com) to pass Supabase's email validation
 
 ## How to Apply This Fix
 1. Go to the Supabase SQL Editor
@@ -40,14 +46,16 @@ ON users FOR INSERT WITH CHECK (true);
 3. Update your code to use the latest version of auth.ts
 
 ## Important Notes
-1. Each username must be unique as we're using it to create email addresses in the format `username@nebulachat.app`
+1. Each username must be unique as we're using it to create email addresses in the format `username@gmail.com`
 
-2. This implementation now utilizes Supabase's built-in authentication system which:
+2. These are not real email addresses - users won't receive actual emails at these addresses
+
+3. This implementation now utilizes Supabase's built-in authentication system which:
    - Provides proper JWT token authentication
    - Securely handles passwords (no plaintext storage)
    - Generates secure user IDs
 
-3. For full production-readiness, consider further enhancements:
-   - Implement email verification
+4. For full production-readiness, consider further enhancements:
+   - Implement real email verification
    - Add password reset functionality
    - Add profile management 

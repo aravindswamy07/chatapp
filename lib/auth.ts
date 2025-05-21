@@ -25,7 +25,7 @@ export async function createUser(username: string, password: string): Promise<Us
     
     // First create an auth user
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: `${username}@nebulachat.app`, // Using a placeholder email with the username
+      email: `${username}@gmail.com`, // Using a standard domain that will pass validation
       password: password,
     });
     
@@ -82,7 +82,7 @@ export async function login(username: string, password: string): Promise<User | 
   try {
     // First log in with email (using username) and password via Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: `${username}@nebulachat.app`, // Match the email format used during signup
+      email: `${username}@gmail.com`, // Match the email format used during signup
       password: password,
     });
     
