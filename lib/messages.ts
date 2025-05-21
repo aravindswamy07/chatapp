@@ -171,14 +171,21 @@ export async function getMessages(roomId: string): Promise<Message[]> {
       
       // Add replied-to message if it exists
       if (msg.messages) {
-        message.replyToMessage = {
-          id: msg.messages.id,
-          roomId: msg.messages.room_id,
-          userId: msg.messages.user_id,
-          username: msg.messages.username,
-          content: msg.messages.content,
-          createdAt: msg.messages.created_at
-        };
+        // Type handling for msg.messages which might be an array or object
+        const replyData = Array.isArray(msg.messages) 
+          ? msg.messages[0] // If it's an array, take the first item
+          : msg.messages;   // If it's already an object, use it directly
+        
+        if (replyData) {
+          message.replyToMessage = {
+            id: replyData.id,
+            roomId: replyData.room_id,
+            userId: replyData.user_id,
+            username: replyData.username,
+            content: replyData.content,
+            createdAt: replyData.created_at
+          };
+        }
       }
       
       return message;
