@@ -7,6 +7,9 @@ export type Message = {
   userId: string;
   username: string;
   content: string;
+  imageUrl?: string;  // Add support for image messages
+  fileUrl?: string;   // Add support for file attachments
+  fileType?: string;  // Add support for file type info
   replyTo?: string;
   replyToMessage?: Message;
   createdAt: string;
@@ -55,6 +58,9 @@ export async function sendMessage(
       userId: message.userId,
       username: message.username,
       content: message.content,
+      imageUrl: message.imageUrl,
+      fileUrl: message.fileUrl,
+      fileType: message.fileType,
       replyTo,
       createdAt: new Date().toISOString()
     };
@@ -66,64 +72,67 @@ export async function sendMessage(
     return newMessage;
   }
 
-  try {
-    const messageData = {
-      room_id: message.roomId,
-      user_id: message.userId,
-      username: message.username,
-      content: message.content,
-      reply_to: replyTo,
-      created_at: new Date().toISOString(),
-    };
-    
-    console.log('Message data to insert:', messageData);
-    
-    // Generate a UUID for the message
-    const newId = uuidv4();
-    
-    const { data, error } = await supabase
-      .from('messages')
-      .insert([{
-        id: newId,
-        ...messageData
-      }])
-      .select();
-    
-    if (error) {
-      console.error('Error sending message to Supabase:', error);
-      return null;
-    }
-    
-    console.log('Message sent successfully, response:', data);
-    
-    if (!data || data.length === 0) {
-      console.log('No data returned but no error either, creating response object');
-      return {
-        id: newId,
-        roomId: message.roomId,
-        userId: message.userId,
+    try {
+      const messageData = {
+        room_id: message.roomId,
+        user_id: message.userId,
         username: message.username,
         content: message.content,
-        replyTo,
-        createdAt: new Date().toISOString()
+        image_url: message.imageUrl,
+        file_url: message.fileUrl,
+        file_type: message.fileType,
+        reply_to: replyTo,
+        created_at: new Date().toISOString(),
       };
+      
+      console.log('Message data to insert:', messageData);
+      
+      // Generate a UUID for the message
+      const newId = uuidv4();
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([{
+          id: newId,
+          ...messageData
+        }])
+        .select();
+      
+      if (error) {
+        console.error('Error sending message to Supabase:', error);
+        return null;
+      }
+      
+      console.log('Message sent successfully, response:', data);
+      
+      if (!data || data.length === 0) {
+        console.log('No data returned but no error either, creating response object');
+        return {
+          id: newId,
+          roomId: message.roomId,
+          userId: message.userId,
+          username: message.username,
+          content: message.content,
+          replyTo,
+          createdAt: new Date().toISOString()
+        };
+      }
+      
+      // Map the snake_case column names from Supabase to camelCase
+      const result = data && data[0];
+      return result ? {
+        id: result.id,
+        roomId: result.room_id,
+        userId: result.user_id,
+        username: result.username,
+        content: result.content,
+        replyTo: result.reply_to,
+        createdAt: result.created_at
+      } : null;
+    } catch (err) {
+      console.error('Exception when sending message:', err);
+      return null;
     }
-    
-    // Map the snake_case column names from Supabase to camelCase
-    const result = data && data[0];
-    return result ? {
-      id: result.id,
-      roomId: result.room_id,
-      userId: result.user_id,
-      username: result.username,
-      content: result.content,
-      replyTo: result.reply_to,
-      createdAt: result.created_at
-    } : null;
-  } catch (err) {
-    console.error('Exception when sending message:', err);
-    return null;
-  }
 }
 
 export async function getMessages(roomId: string): Promise<Message[]> {
@@ -135,20 +144,23 @@ export async function getMessages(roomId: string): Promise<Message[]> {
   }
 
   try {
-    const { data, error } = await supabase
-      .from('messages')
-      .select(`
-        id, 
-        room_id, 
-        user_id, 
-        username, 
-        content, 
-        reply_to, 
-        created_at,
-        messages:reply_to(id, room_id, user_id, username, content, created_at)
-      `)
-      .eq('room_id', roomId)
-      .order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id, 
+          room_id, 
+          user_id, 
+          username, 
+          content, 
+          image_url,
+          file_url,
+          file_type,
+          reply_to, 
+          created_at,
+          messages:reply_to(id, room_id, user_id, username, content, created_at)
+        `)
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true });
     
     if (error) {
       console.error('Error fetching messages from Supabase:', error);
@@ -165,6 +177,9 @@ export async function getMessages(roomId: string): Promise<Message[]> {
         userId: msg.user_id,
         username: msg.username,
         content: msg.content,
+        imageUrl: msg.image_url,
+        fileUrl: msg.file_url,
+        fileType: msg.file_type,
         replyTo: msg.reply_to,
         createdAt: msg.created_at,
       };

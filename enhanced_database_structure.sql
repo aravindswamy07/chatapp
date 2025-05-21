@@ -16,7 +16,9 @@ CREATE TABLE rooms (
   id TEXT PRIMARY KEY, -- 5-digit numeric ID
   password TEXT NOT NULL, -- 7-character password
   created_by UUID REFERENCES users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  name TEXT,  -- Added room name
+  description TEXT -- Added room description
 );
 
 -- Create room_participants table to track users in each room
@@ -24,6 +26,7 @@ CREATE TABLE room_participants (
   room_id TEXT REFERENCES rooms(id),
   user_id UUID REFERENCES users(id),
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  is_admin BOOLEAN DEFAULT false,  -- Added admin flag
   PRIMARY KEY (room_id, user_id)
 );
 
@@ -34,6 +37,9 @@ CREATE TABLE messages (
   user_id UUID REFERENCES users(id),
   username TEXT NOT NULL,
   content TEXT NOT NULL,
+  image_url TEXT,          -- Added support for image URLs
+  file_url TEXT,           -- Added support for file uploads
+  file_type TEXT,          -- Added file type information
   reply_to UUID REFERENCES messages(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -95,4 +101,24 @@ BEGIN
     END IF;
   END LOOP;
 END;
-$$ LANGUAGE plpgsql; 
+$$ LANGUAGE plpgsql;
+
+-- Create a trigger to set the room creator as admin
+CREATE OR REPLACE FUNCTION set_room_creator_as_admin()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO room_participants (room_id, user_id, is_admin)
+  VALUES (NEW.id, NEW.created_by, true);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create a storage bucket for chat images
+INSERT INTO storage.buckets (id, name)
+VALUES ('chat-images', 'Chat Message Images')
+ON CONFLICT (id) DO NOTHING;
+
+-- Set up storage permissions
+CREATE POLICY "Allow public access to chat images"
+ON storage.objects FOR ALL
+USING (bucket_id = 'chat-images'); 
