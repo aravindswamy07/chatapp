@@ -22,12 +22,18 @@ export default function Home() {
   
   // Check if user is logged in
   useEffect(() => {
+    console.log('Home page - Checking authentication');
     const user = getCurrentUser();
+    
     if (!user) {
-      router.push('/login');
+      console.log('Home page - No user found, redirecting to login');
+      setTimeout(() => {
+        router.push('/login');
+      }, 500);
       return;
     }
     
+    console.log('Home page - User authenticated:', user.username);
     setUser(user);
     
     // Fetch user's rooms

@@ -90,17 +90,31 @@ export async function login(username: string, password: string): Promise<User | 
 
 export function getUserFromStorage() {
   if (typeof window !== 'undefined') {
-    const storedUser = sessionStorage.getItem('currentUser');
-    if (storedUser) {
-      currentUser = JSON.parse(storedUser);
-      return currentUser;
+    try {
+      const storedUser = sessionStorage.getItem('currentUser');
+      console.log('Getting user from storage:', storedUser ? 'Found user' : 'No user found');
+      if (storedUser) {
+        currentUser = JSON.parse(storedUser);
+        return currentUser;
+      }
+    } catch (err) {
+      console.error('Error retrieving user from storage:', err);
+      // Clear potentially corrupted data
+      sessionStorage.removeItem('currentUser');
     }
   }
   return null;
 }
 
 export function getCurrentUser() {
-  return currentUser || getUserFromStorage();
+  if (currentUser) {
+    console.log('Using cached user:', currentUser.username);
+    return currentUser;
+  }
+  
+  const storageUser = getUserFromStorage();
+  console.log('Getting current user:', storageUser ? storageUser.username : 'No user');
+  return storageUser;
 }
 
 export function logout() {
@@ -112,7 +126,10 @@ export function logout() {
 }
 
 export function isLoggedIn() {
-  return Boolean(getCurrentUser());
+  const user = getCurrentUser();
+  const isUserLoggedIn = !!user;
+  console.log('isLoggedIn check:', isUserLoggedIn);
+  return isUserLoggedIn;
 }
 
 // Room functions

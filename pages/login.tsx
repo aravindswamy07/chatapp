@@ -13,9 +13,20 @@ export default function Login() {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (isLoggedIn()) {
-      router.push('/home');
-    }
+    const checkAuth = async () => {
+      const userLoggedIn = isLoggedIn();
+      console.log('Login page - Check if user is logged in:', userLoggedIn);
+      
+      if (userLoggedIn) {
+        // Add small delay before redirect
+        console.log('User already logged in, redirecting to home after delay');
+        setTimeout(() => {
+          router.push('/home');
+        }, 500);
+      }
+    };
+    
+    checkAuth();
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
