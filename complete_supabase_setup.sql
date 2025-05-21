@@ -432,12 +432,12 @@ $$;
 CREATE OR REPLACE FUNCTION generate_room_id()
 RETURNS TEXT AS $$
 DECLARE
-  id TEXT;
+  v_id TEXT;
   duplicate_exists BOOLEAN;
 BEGIN
   LOOP
     -- Generate a short, readable room ID
-    id := array_to_string(
+    v_id := array_to_string(
       ARRAY(
         SELECT substring('ABCDEFGHJKLMNPQRSTUVWXYZ23456789' FROM floor(random() * 33 + 1)::integer FOR 1)
         FROM generate_series(1, 6)
@@ -447,13 +447,13 @@ BEGIN
     
     -- Check if it already exists
     SELECT EXISTS(
-      SELECT 1 FROM rooms WHERE rooms.id = id
+      SELECT 1 FROM rooms WHERE rooms.id = v_id
     ) INTO duplicate_exists;
     
-    -- Exit loop if the ID is unique
+    -- Exit loop if the ID is unique (doesn't exist yet)
     EXIT WHEN NOT duplicate_exists;
   END LOOP;
   
-  RETURN id;
+  RETURN v_id;
 END;
 $$ LANGUAGE plpgsql; 
