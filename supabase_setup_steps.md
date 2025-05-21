@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   description TEXT,
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   is_private BOOLEAN DEFAULT FALSE,
+  password TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

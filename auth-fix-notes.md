@@ -1,6 +1,6 @@
-# Authentication Fix - Complete Auth Solution
+# Authentication and Database Schema Fix
 
-## Issue 1: Missing Password Column
+## Issue 1: Missing Password Column in Users Table
 We encountered an error during user signup: "Could not find the 'password' column of 'users' in the schema cache". 
 
 This happened because our authentication code in `lib/auth.ts` was trying to store passwords directly in the users table, but our Supabase schema didn't have a password column defined.
@@ -25,6 +25,11 @@ After implementing Supabase Auth, we encountered the error: "Invalid login crede
 
 This happened because existing users created before the auth integration don't have corresponding auth records.
 
+## Issue 6: Missing Password Column in Rooms Table
+We encountered an error when creating rooms: "Could not find the 'password' column of 'rooms' in the schema cache".
+
+This happened because our code was trying to store a password in the rooms table, but our Supabase schema didn't have this column defined.
+
 ## Complete Fix Applied
 1. Added a `password` column to the `users` table in the setup files
 2. Added an INSERT policy for the users table to allow user creation
@@ -39,20 +44,29 @@ This happened because existing users created before the auth integration don't h
    - Login attempts first try the new auth method
    - If that fails, it falls back to the old direct database check
    - For existing users, it attempts to create a matching auth user for future logins
+7. Added a `password` column to the `rooms` table for room access control
 
 ## How to Apply This Fix
 1. Go to the Supabase SQL Editor
 2. Run the following SQL:
 ```sql
--- Fix 1: Add password column
+-- Fix 1: Add password column to users table
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT;
 
 -- Fix 2: Add INSERT policy for users table
 CREATE POLICY "Anyone can create a user account" 
 ON users FOR INSERT WITH CHECK (true);
+
+-- Fix 3: Add password column to rooms table
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS password TEXT;
 ```
 
 3. Update your code to use the latest version of auth.ts
+
+## Individual Fix Scripts
+For targeted fixes, you can use these individual scripts:
+- `add_rls_policy.sql` - Adds the missing RLS policy for user creation
+- `add_room_password_column.sql` - Adds the password column to rooms table
 
 ## Important Notes
 1. Each username must be unique as we're using it to create email addresses in the format `username@gmail.com`
