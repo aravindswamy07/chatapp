@@ -147,15 +147,44 @@ export async function login(username: string, password: string): Promise<User | 
     
     // Legacy login succeeded - create auth user for future logins
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // Try to sign in with the email/username combination first
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: `${username}@gmail.com`,
         password: password,
       });
       
-      if (!authError && authData.user) {
-        console.log('Created auth user for legacy account');
-        // If user ID doesn't match, we should update the user record
-        // But that's more complex - for now just advise them to use new signup
+      // If that fails (user doesn't exist in auth), create a new auth user
+      if (signInError) {
+        console.log('Auth user does not exist yet, creating one...');
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: `${username}@gmail.com`,
+          password: password,
+          options: {
+            data: {
+              username: username,
+            }
+          }
+        });
+        
+        if (!authError && authData.user) {
+          console.log('Created auth user for legacy account');
+          
+          // Force a login to create a valid session
+          const { data: sessionData, error: sessionError } = await supabase.auth.signInWithPassword({
+            email: `${username}@gmail.com`,
+            password: password,
+          });
+          
+          if (sessionError) {
+            console.error('Failed to create session after signup:', sessionError);
+          } else {
+            console.log('Successfully created auth session for legacy user');
+          }
+        } else {
+          console.error('Failed to create auth user for legacy account:', authError);
+        }
+      } else {
+        console.log('Successfully signed in with existing auth credentials');
       }
     } catch (createErr) {
       console.error('Failed to create auth user for legacy account:', createErr);
