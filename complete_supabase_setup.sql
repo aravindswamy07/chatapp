@@ -232,7 +232,7 @@ ON messages FOR DELETE USING (user_id = auth.uid());
 CREATE POLICY "Anyone can view active users" 
 ON active_users FOR SELECT USING (true);
 
-CREATE POLICY "Users can update their own active status" 
+CREATE POLICY "Users can insert their own active status" 
 ON active_users FOR INSERT WITH CHECK (id = auth.uid());
 
 CREATE POLICY "Users can update their own active status" 
@@ -372,7 +372,7 @@ ALTER TABLE user_typing ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view typing status"
 ON user_typing FOR SELECT USING (true);
 
-CREATE POLICY "Users can update their own typing status"
+CREATE POLICY "Users can insert their own typing status"
 ON user_typing FOR INSERT WITH CHECK (user_id = auth.uid());
 
 CREATE POLICY "Users can update their own typing status"
