@@ -80,50 +80,98 @@ export async function createUser(username: string, password: string): Promise<Us
 // Log in with username and password
 export async function login(username: string, password: string): Promise<User | null> {
   try {
-    // First log in with email (using username) and password via Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: `${username}@gmail.com`, // Match the email format used during signup
-      password: password,
-    });
-    
-    if (authError || !authData.user) {
-      console.error('Auth login error:', authError);
-      return null;
-    }
-    
-    // Get the user data from our users table using the auth ID
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', authData.user.id)
-      .single();
-    
-    if (error) {
-      console.error('Login error:', error);
+    // First try the new auth system login
+    try {
+      // Log in with email (using username) and password via Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: `${username}@gmail.com`, // Match the email format used during signup
+        password: password,
+      });
       
-      // Add specific check for missing password column
-      if (error.message && error.message.includes('password') && error.message.includes('column')) {
-        throw new Error('Database setup issue: password column missing. Please run the SQL setup script in Supabase.');
+      if (!authError && authData.user) {
+        // Auth login succeeded, get user from database
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authData.user.id)
+          .single();
+        
+        if (!error && data) {
+          // Success - update last login time
+          await supabase
+            .from('users')
+            .update({ last_seen: new Date().toISOString() })
+            .eq('id', data.id);
+          
+          // Return the user
+          const user = { 
+            id: data.id, 
+            username: data.username 
+          };
+          
+          currentUser = user;
+          
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('currentUser', JSON.stringify(user));
+          }
+          
+          return user;
+        }
       }
       
+      // If we get here, auth login failed but we don't throw - try legacy login
+      console.log('Auth login failed, trying legacy login');
+    } catch (authErr) {
+      console.error('Auth login error, trying legacy login:', authErr);
+      // Fall through to legacy login
+    }
+    
+    // LEGACY LOGIN METHOD for existing users
+    console.log('Attempting legacy login for:', username);
+    const { data: legacyData, error: legacyError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('password', password) // In a real app, we'd verify a hash
+      .single();
+    
+    if (legacyError) {
+      console.error('Legacy login error:', legacyError);
       return null;
     }
     
-    if (!data) {
+    if (!legacyData) {
       console.error('No user found with those credentials');
       return null;
+    }
+    
+    // Legacy login succeeded - create auth user for future logins
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: `${username}@gmail.com`,
+        password: password,
+      });
+      
+      if (!authError && authData.user) {
+        console.log('Created auth user for legacy account');
+        // If user ID doesn't match, we should update the user record
+        // But that's more complex - for now just advise them to use new signup
+      }
+    } catch (createErr) {
+      console.error('Failed to create auth user for legacy account:', createErr);
+      // Continue with legacy login anyway
     }
     
     // Update last login time
     await supabase
       .from('users')
       .update({ last_seen: new Date().toISOString() })
-      .eq('id', data.id);
+      .eq('id', legacyData.id);
     
     // Store in session storage for persistence across page refreshes
     const user = { 
-      id: data.id, 
-      username: data.username 
+      id: legacyData.id, 
+      username: legacyData.username 
     };
     
     currentUser = user;

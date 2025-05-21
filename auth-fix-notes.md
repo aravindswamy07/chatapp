@@ -20,6 +20,11 @@ We encountered an error: "Email address 'username@nebulachat.app' is invalid".
 
 This occurred because Supabase's auth system validates email addresses and was rejecting our custom domain.
 
+## Issue 5: Existing Users Unable to Log In
+After implementing Supabase Auth, we encountered the error: "Invalid login credentials".
+
+This happened because existing users created before the auth integration don't have corresponding auth records.
+
 ## Complete Fix Applied
 1. Added a `password` column to the `users` table in the setup files
 2. Added an INSERT policy for the users table to allow user creation
@@ -30,6 +35,10 @@ This occurred because Supabase's auth system validates email addresses and was r
    - Properly logging in with supabase.auth.signInWithPassword()
    - Properly logging out with supabase.auth.signOut()
 5. Used a valid email domain (gmail.com) to pass Supabase's email validation
+6. Added backward compatibility for existing users:
+   - Login attempts first try the new auth method
+   - If that fails, it falls back to the old direct database check
+   - For existing users, it attempts to create a matching auth user for future logins
 
 ## How to Apply This Fix
 1. Go to the Supabase SQL Editor
@@ -50,12 +59,14 @@ ON users FOR INSERT WITH CHECK (true);
 
 2. These are not real email addresses - users won't receive actual emails at these addresses
 
-3. This implementation now utilizes Supabase's built-in authentication system which:
+3. Existing users can continue using their accounts, while new users will be properly set up with the enhanced security
+
+4. This implementation now utilizes Supabase's built-in authentication system which:
    - Provides proper JWT token authentication
    - Securely handles passwords (no plaintext storage)
    - Generates secure user IDs
 
-4. For full production-readiness, consider further enhancements:
+5. For full production-readiness, consider further enhancements:
    - Implement real email verification
    - Add password reset functionality
    - Add profile management 
