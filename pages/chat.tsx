@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { getCurrentUser, logout, User } from '../lib/auth';
-import { getMessages, sendMessage, subscribeToMessages, Message } from '../lib/messages';
+import { getMessages, sendMessage, subscribeToRoomMessages, Message } from '../lib/messages';
 import { getActiveUsers, removeActiveUser } from '../lib/supabase';
 
 export default function Chat() {
@@ -49,7 +49,7 @@ export default function Chat() {
       try {
         setIsLoading(true);
         const [fetchedMessages, fetchedUsers] = await Promise.all([
-          getMessages(),
+          getMessages('default'),
           getActiveUsers()
         ]);
         
@@ -64,8 +64,8 @@ export default function Chat() {
     
     fetchInitialData();
     
-    // Subscribe to new messages
-    const subscription = subscribeToMessages((newMessage) => {
+    // Subscribe to new messages using the 'default' room
+    const subscription = subscribeToRoomMessages('default', (newMessage) => {
       setMessages((prev) => [...prev, newMessage]);
     });
     
@@ -109,7 +109,8 @@ export default function Chat() {
       const messageToSend = {
         userId: user.id,
         username: user.username,
-        content: newMessage
+        content: newMessage,
+        roomId: 'default'
       };
       
       console.log('Message payload:', messageToSend);
