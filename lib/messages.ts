@@ -126,6 +126,9 @@ export async function sendMessage(
         userId: result.user_id,
         username: result.username,
         content: result.content,
+        imageUrl: result.image_url,
+        fileUrl: result.file_url,
+        fileType: result.file_type,
         replyTo: result.reply_to,
         createdAt: result.created_at
       } : null;

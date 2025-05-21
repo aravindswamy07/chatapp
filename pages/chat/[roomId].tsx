@@ -280,6 +280,16 @@ export default function ChatRoom() {  const [messages, setMessages] = useState<M
                 alt="Shared image" 
                 className="rounded-md max-h-60 max-w-full cursor-pointer"
                 onClick={() => window.open(message.imageUrl, '_blank')}
+                onError={(e) => {
+                  console.error('Image failed to load:', message.imageUrl);
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.appendChild(
+                    Object.assign(document.createElement('div'), {
+                      className: 'text-red-400 text-sm',
+                      textContent: 'Image could not be loaded'
+                    })
+                  );
+                }}
               />
             </div>
           )}

@@ -11,6 +11,8 @@ export async function uploadImage(file: File, roomId: string): Promise<string | 
     // Create path based on room
     const filePath = `room-${roomId}/${fileName}`;
     
+    console.log('Uploading file to path:', filePath);
+    
     // Upload to Supabase storage
     const { data, error } = await supabase.storage
       .from('chat-images')
@@ -21,9 +23,20 @@ export async function uploadImage(file: File, roomId: string): Promise<string | 
       return null;
     }
     
+    console.log('File uploaded successfully, data:', data);
+    
     // Get the public URL
-    const url = supabase.storage.from('chat-images').getPublicUrl(filePath).data.publicUrl;
-    return url;
+    const { data: urlData } = supabase.storage.from('chat-images').getPublicUrl(filePath);
+    
+    // Log the URL to help with debugging
+    console.log('Generated public URL:', urlData.publicUrl);
+    
+    if (!urlData || !urlData.publicUrl) {
+      console.error('Failed to generate public URL');
+      return null;
+    }
+    
+    return urlData.publicUrl;
   } catch (err) {
     console.error('Exception uploading image:', err);
     return null;
