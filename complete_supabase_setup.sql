@@ -396,4 +396,64 @@ ON user_typing FOR DELETE USING (user_id = auth.uid());
 -- Create a default room if it doesn't exist
 INSERT INTO rooms (id, name, description, created_by, is_private)
 VALUES ('default', 'General Chat', 'Welcome to NebulaChat!', NULL, false)
-ON CONFLICT (id) DO NOTHING; 
+ON CONFLICT (id) DO NOTHING;
+
+-- ===================================================
+-- 9. FIX EXISTING ROOMS WITHOUT PASSWORDS
+-- ===================================================
+
+-- Add random passwords to rooms that don't have one
+UPDATE rooms
+SET password = 
+  array_to_string(
+    ARRAY(
+      SELECT substring('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789' FROM floor(random() * 58 + 1)::integer FOR 1)
+      FROM generate_series(1, 7)
+    ), 
+    ''
+  )
+WHERE password IS NULL;
+
+-- Output the count of rooms with passwords
+DO $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    SELECT count(*) INTO updated_count FROM rooms WHERE password IS NOT NULL;
+    RAISE NOTICE 'Total rooms with passwords: %', updated_count;
+END
+$$;
+
+-- ===================================================
+-- 10. ADD ROOM ID GENERATOR FUNCTION
+-- ===================================================
+
+-- Create function to generate room IDs
+CREATE OR REPLACE FUNCTION generate_room_id()
+RETURNS TEXT AS $$
+DECLARE
+  id TEXT;
+  duplicate_exists BOOLEAN;
+BEGIN
+  LOOP
+    -- Generate a short, readable room ID
+    id := array_to_string(
+      ARRAY(
+        SELECT substring('ABCDEFGHJKLMNPQRSTUVWXYZ23456789' FROM floor(random() * 33 + 1)::integer FOR 1)
+        FROM generate_series(1, 6)
+      ), 
+      ''
+    );
+    
+    -- Check if it already exists
+    SELECT EXISTS(
+      SELECT 1 FROM rooms WHERE rooms.id = id
+    ) INTO duplicate_exists;
+    
+    -- Exit loop if the ID is unique
+    EXIT WHEN NOT duplicate_exists;
+  END LOOP;
+  
+  RETURN id;
+END;
+$$ LANGUAGE plpgsql; 
