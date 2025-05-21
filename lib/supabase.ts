@@ -6,12 +6,41 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholde
 
 // Display a warning if credentials aren't set
 if (typeof window !== 'undefined') {
+  console.log('Supabase URL:', supabaseUrl);
+  console.log('Supabase Key length:', supabaseAnonKey?.length);
+  
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     console.warn('⚠️ Supabase credentials not found! Please create a .env.local file with your Supabase credentials.');
   }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Create Supabase client with detailed options
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
+  },
+  global: {
+    fetch: fetch
+  }
+});
+
+// Test connection
+if (typeof window !== 'undefined') {
+  supabase.from('messages').select('count', { count: 'exact', head: true })
+    .then(({ count, error }) => {
+      if (error) {
+        console.error('Supabase connection test failed:', error);
+      } else {
+        console.log('Supabase connection successful, message count:', count);
+      }
+    });
+}
 
 // Mock implementation for missing Supabase
 const mockUsers = [
@@ -29,16 +58,23 @@ export async function getActiveUsers() {
     return mockUsers;
   }
 
-  const { data, error } = await supabase
-    .from('active_users')
-    .select('*');
-  
-  if (error) {
-    console.error('Error fetching active users:', error);
+  try {
+    console.log('Fetching active users from Supabase...');
+    const { data, error } = await supabase
+      .from('active_users')
+      .select('*');
+    
+    if (error) {
+      console.error('Error fetching active users:', error);
+      return [];
+    }
+    
+    console.log('Active users retrieved successfully, count:', data?.length);
+    return data || [];
+  } catch (err) {
+    console.error('Exception when fetching active users:', err);
     return [];
   }
-  
-  return data || [];
 }
 
 export async function checkUserLimit() {
@@ -53,16 +89,23 @@ export async function addActiveUser(userId: string, username: string) {
     return true;
   }
 
-  const { error } = await supabase
-    .from('active_users')
-    .insert([{ id: userId, username }]);
-  
-  if (error) {
-    console.error('Error adding active user:', error);
+  try {
+    console.log('Adding active user to Supabase:', { userId, username });
+    const { error } = await supabase
+      .from('active_users')
+      .insert([{ id: userId, username }]);
+    
+    if (error) {
+      console.error('Error adding active user:', error);
+      return false;
+    }
+    
+    console.log('User added successfully');
+    return true;
+  } catch (err) {
+    console.error('Exception when adding active user:', err);
     return false;
   }
-  
-  return true;
 }
 
 export async function removeActiveUser(userId: string) {
@@ -75,15 +118,22 @@ export async function removeActiveUser(userId: string) {
     return true;
   }
 
-  const { error } = await supabase
-    .from('active_users')
-    .delete()
-    .eq('id', userId);
-  
-  if (error) {
-    console.error('Error removing active user:', error);
+  try {
+    console.log('Removing active user from Supabase:', userId);
+    const { error } = await supabase
+      .from('active_users')
+      .delete()
+      .eq('id', userId);
+    
+    if (error) {
+      console.error('Error removing active user:', error);
+      return false;
+    }
+    
+    console.log('User removed successfully');
+    return true;
+  } catch (err) {
+    console.error('Exception when removing active user:', err);
     return false;
   }
-  
-  return true;
 } 
