@@ -14,6 +14,19 @@ export default function Login() {
   // Redirect if already logged in
   useEffect(() => {
     const checkAuth = async () => {
+      // Check for recent redirects to prevent loops
+      if (typeof window !== 'undefined') {
+        const redirectInProgress = localStorage.getItem('redirectInProgress');
+        const timestamp = parseInt(redirectInProgress || '0');
+        const now = Date.now();
+        
+        // If a redirect was initiated in the last 3 seconds, don't redirect again
+        if (redirectInProgress && now - timestamp < 3000) {
+          console.log('Login page - Recent redirect detected, preventing loop');
+          return;
+        }
+      }
+    
       const userLoggedIn = isLoggedIn();
       console.log('Login page - Check if user is logged in:', userLoggedIn);
       
@@ -21,8 +34,12 @@ export default function Login() {
         // Add small delay before redirect
         console.log('User already logged in, redirecting to home after delay');
         setTimeout(() => {
+          // Set redirect flag before navigating
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('redirectInProgress', Date.now().toString());
+          }
           router.push('/home');
-        }, 500);
+        }, 1500);
       }
     };
     

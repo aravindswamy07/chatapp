@@ -8,10 +8,31 @@ export default function Home() {
   
   // Check login status and redirect appropriately
   useEffect(() => {
+    // Set a prevention flag in localStorage to avoid redirect loops
+    if (typeof window !== 'undefined') {
+      const redirectInProgress = localStorage.getItem('redirectInProgress');
+      const timestamp = parseInt(redirectInProgress || '0');
+      const now = Date.now();
+      
+      // If a redirect was initiated in the last 3 seconds, don't redirect again
+      if (redirectInProgress && now - timestamp < 3000) {
+        console.log('Recent redirect detected, preventing loop');
+        return;
+      }
+      
+      // Set redirect flag with current timestamp
+      localStorage.setItem('redirectInProgress', now.toString());
+      
+      // Clear the flag after 3 seconds
+      setTimeout(() => {
+        localStorage.removeItem('redirectInProgress');
+      }, 3000);
+    }
+    
     // Prevent redirection if already in progress
     if (redirecting) return;
     
-    // Add a small delay to prevent rapid redirection loops
+    // Add a larger delay to prevent rapid redirection loops
     const redirectTimer = setTimeout(() => {
       const loggedIn = isLoggedIn();
       console.log('Index page - User logged in:', loggedIn);
@@ -27,7 +48,7 @@ export default function Home() {
         console.log('Redirecting to /login');
         router.push('/login');
       }
-    }, 500); // 500ms delay
+    }, 1500); // 1.5 second delay
     
     return () => clearTimeout(redirectTimer);
   }, [router, redirecting]);

@@ -89,24 +89,36 @@ export async function login(username: string, password: string): Promise<User | 
 }
 
 export function getUserFromStorage() {
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') {
+    console.log('getUserFromStorage called on server side, returning null');
+    return null;
+  }
+  
+  try {
+    const storedUser = sessionStorage.getItem('currentUser');
+    console.log('Getting user from storage:', storedUser ? 'Found user' : 'No user found');
+    if (storedUser) {
+      currentUser = JSON.parse(storedUser);
+      return currentUser;
+    }
+  } catch (err) {
+    console.error('Error retrieving user from storage:', err);
+    // Clear potentially corrupted data
     try {
-      const storedUser = sessionStorage.getItem('currentUser');
-      console.log('Getting user from storage:', storedUser ? 'Found user' : 'No user found');
-      if (storedUser) {
-        currentUser = JSON.parse(storedUser);
-        return currentUser;
-      }
-    } catch (err) {
-      console.error('Error retrieving user from storage:', err);
-      // Clear potentially corrupted data
       sessionStorage.removeItem('currentUser');
+    } catch (e) {
+      console.error('Error clearing sessionStorage:', e);
     }
   }
   return null;
 }
 
 export function getCurrentUser() {
+  // If on server side, can't have a user
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  
   if (currentUser) {
     console.log('Using cached user:', currentUser.username);
     return currentUser;
@@ -126,10 +138,21 @@ export function logout() {
 }
 
 export function isLoggedIn() {
-  const user = getCurrentUser();
-  const isUserLoggedIn = !!user;
-  console.log('isLoggedIn check:', isUserLoggedIn);
-  return isUserLoggedIn;
+  // Make sure we're not running on server
+  if (typeof window === 'undefined') {
+    console.log('isLoggedIn called server-side - returning false');
+    return false;
+  }
+  
+  try {
+    const user = getCurrentUser();
+    const isUserLoggedIn = !!user;
+    console.log('isLoggedIn check:', isUserLoggedIn);
+    return isUserLoggedIn;
+  } catch (err) {
+    console.error('Error in isLoggedIn:', err);
+    return false;
+  }
 }
 
 // Room functions

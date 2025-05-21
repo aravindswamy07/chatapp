@@ -22,14 +22,31 @@ export default function Home() {
   
   // Check if user is logged in
   useEffect(() => {
+    // Check for recent redirects to prevent loops
+    if (typeof window !== 'undefined') {
+      const redirectInProgress = localStorage.getItem('redirectInProgress');
+      const timestamp = parseInt(redirectInProgress || '0');
+      const now = Date.now();
+      
+      // If a redirect was initiated in the last 3 seconds, don't redirect again
+      if (redirectInProgress && now - timestamp < 3000) {
+        console.log('Home page - Recent redirect detected, preventing loop');
+        return;
+      }
+    }
+  
     console.log('Home page - Checking authentication');
     const user = getCurrentUser();
     
     if (!user) {
       console.log('Home page - No user found, redirecting to login');
       setTimeout(() => {
+        // Set redirect flag before navigating
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('redirectInProgress', Date.now().toString());
+        }
         router.push('/login');
-      }, 500);
+      }, 1500);
       return;
     }
     
