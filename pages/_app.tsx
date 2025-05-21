@@ -1,22 +1,54 @@
 import React from 'react';
 import { AppProps } from 'next/app';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { isLoggedIn } from '../lib/auth';
 import '../styles/globals.css';
 import Head from 'next/head';
 
+// Define public paths that don't require authentication
+const PUBLIC_PATHS = ['/login', '/signup'];
+
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
-
+  const [authChecked, setAuthChecked] = useState(false);
+  
   useEffect(() => {
-    // Simple auth check - redirect to login if not logged in
-    // except for the login page itself
-    if (!isLoggedIn() && router.pathname !== '/') {
-      router.push('/');
+    // Skip auth check for public paths
+    if (PUBLIC_PATHS.includes(router.pathname)) {
+      setAuthChecked(true);
+      return;
     }
+    
+    // Skip for non-browser environment
+    if (typeof window === 'undefined') return;
+    
+    const checkAuth = () => {
+      const isAuthenticated = isLoggedIn();
+      console.log('_app.tsx - Auth check:', { isAuthenticated, path: router.pathname });
+      
+      if (!isAuthenticated && !PUBLIC_PATHS.includes(router.pathname)) {
+        console.log('_app.tsx - Redirecting to login');
+        // Remove any redirect tracking before forcing navigation
+        localStorage.removeItem('redirectInProgress');
+        router.replace('/login');
+      } else {
+        setAuthChecked(true);
+      }
+    };
+    
+    checkAuth();
   }, [router.pathname]);
-
+  
+  // Show loading state while checking authentication
+  if (!authChecked && !PUBLIC_PATHS.includes(router.pathname)) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center">
+        <div className="text-white text-xl">Checking authentication...</div>
+      </div>
+    );
+  }
+  
   return (
     <>
       <Head>
