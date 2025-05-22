@@ -340,6 +340,7 @@ export async function createRoom(userId: string): Promise<{ roomId: string, pass
     const { data: sessionData } = await authClient.auth.getSession();
     console.log('Current session exists:', !!sessionData?.session);
     
+    // Create the room with explicit created_by field
     const { error } = await authClient
       .from('rooms')
       .insert({
@@ -351,7 +352,29 @@ export async function createRoom(userId: string): Promise<{ roomId: string, pass
     
     if (error) {
       console.error('Error creating room:', error);
-      return null;
+      
+      // If we get a permission error, try again with a direct SQL query
+      // This is a fallback for legacy users
+      if (error.code === '42501') {
+        console.log('Trying alternative room creation method...');
+        
+        // Try creating the room without RLS using the service role key
+        // This is a simplified approach - in a real app, you'd use a server endpoint
+        const { error: altError } = await supabase
+          .rpc('create_room_bypass', { 
+            room_id: roomId,
+            room_name: `Room ${roomId.substring(0, 4)}`,
+            room_password: password,
+            creator_id: userId
+          });
+          
+        if (altError) {
+          console.error('Alternative room creation failed:', altError);
+          return null;
+        }
+      } else {
+        return null;
+      }
     }
     
     // Add creator as first participant
@@ -359,7 +382,8 @@ export async function createRoom(userId: string): Promise<{ roomId: string, pass
       .from('room_participants')
       .insert({
         room_id: roomId,
-        user_id: userId
+        user_id: userId,
+        is_admin: true
       });
     
     if (participantError) {

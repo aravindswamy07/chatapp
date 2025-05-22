@@ -59,37 +59,8 @@ export const getAuthenticatedClient = async () => {
     return authClient;
   }
   
-  // Fallback for legacy users: Check if we have a user in storage
-  if (typeof window !== 'undefined') {
-    const userStr = sessionStorage.getItem('currentUser');
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        console.log('Found legacy user in storage, creating custom headers with user ID:', user.id);
-        
-        // Create a client with custom headers that include the user ID
-        // This allows our RLS policies to use this header in addition to auth.uid()
-        const legacyClient = createClient(supabaseUrl, supabaseAnonKey, {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-          },
-          global: {
-            headers: {
-              // Add a custom header with the user ID
-              'x-legacy-user-id': user.id,
-            },
-          },
-        });
-        
-        console.log('Using legacy authenticated client with custom headers');
-        return legacyClient;
-      } catch (e) {
-        console.error('Error parsing user from storage:', e);
-      }
-    }
-  }
-  
+  // For legacy users, we'll just use the anonymous client
+  // We've updated the RLS policies to allow anonymous access for room creation
   console.log('No authenticated session found, using anonymous client');
   return supabase;
 };

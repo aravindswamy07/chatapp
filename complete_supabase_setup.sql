@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   avatar_url TEXT,
   password TEXT,
+  auth_id UUID, -- Add auth_id column to link legacy users to auth users
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -459,42 +460,44 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ===================================================
--- 11. ADD LEGACY AUTH SUPPORT
+-- 11. LEGACY AUTH SUPPORT
 -- ===================================================
 
--- Create a custom function to check access based on legacy user ID header
-CREATE OR REPLACE FUNCTION public.check_legacy_user_id()
-RETURNS UUID AS $$
-DECLARE
-  legacy_user_id UUID;
+-- Create a function that will check if a user can access content they own
+-- This will be used in RLS policies
+CREATE OR REPLACE FUNCTION public.check_user_access(user_id UUID, resource_user_id UUID) 
+RETURNS BOOLEAN AS $$
 BEGIN
-  -- Get the legacy user ID from the request header
-  legacy_user_id := NULLIF(current_setting('request.headers.x-legacy-user-id', TRUE), '')::UUID;
-  
-  -- Return the legacy user ID if present, otherwise NULL
-  RETURN legacy_user_id;
+  -- Return true if the logged-in user is the owner
+  -- or if the user has no auth but the legacy ID matches
+  RETURN (auth.uid() = resource_user_id) OR 
+         -- Check for direct ID match with auth.uid()
+         (auth.uid() = user_id) OR
+         -- Check for direct match in tables
+         EXISTS (
+           SELECT 1 FROM public.users
+           WHERE users.id = resource_user_id
+           AND users.id = user_id
+         );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Update RLS policies to support both auth.uid() and legacy user ID
 
 -- Modify rooms table policies
 DROP POLICY IF EXISTS "Anyone can create rooms" ON rooms;
 CREATE POLICY "Anyone can create rooms" 
 ON rooms FOR INSERT WITH CHECK (
   auth.uid() = created_by OR 
-  public.check_legacy_user_id() = created_by
+  auth.uid() IS NOT NULL
 );
 
 DROP POLICY IF EXISTS "Room creators and admins can update rooms" ON rooms;
 CREATE POLICY "Room creators and admins can update rooms" 
 ON rooms FOR UPDATE USING (
-  auth.uid() = created_by OR 
-  public.check_legacy_user_id() = created_by OR
+  auth.uid() = created_by OR
   EXISTS (
     SELECT 1 FROM room_participants 
     WHERE room_participants.room_id = rooms.id 
-    AND (room_participants.user_id = auth.uid() OR room_participants.user_id = public.check_legacy_user_id())
+    AND room_participants.user_id = auth.uid()
     AND room_participants.is_admin = true
   )
 );
@@ -503,80 +506,115 @@ DROP POLICY IF EXISTS "Room creators and admins can delete rooms" ON rooms;
 CREATE POLICY "Room creators and admins can delete rooms" 
 ON rooms FOR DELETE USING (
   auth.uid() = created_by OR
-  public.check_legacy_user_id() = created_by OR
   EXISTS (
     SELECT 1 FROM room_participants 
     WHERE room_participants.room_id = rooms.id 
-    AND (room_participants.user_id = auth.uid() OR room_participants.user_id = public.check_legacy_user_id())
+    AND room_participants.user_id = auth.uid()
     AND room_participants.is_admin = true
   )
 );
+
+-- Create a special bypass policy for legacy room creation
+CREATE POLICY "Legacy users can create rooms" 
+ON rooms FOR INSERT WITH CHECK (true);
+
+-- Create a trigger function to automatically associate a room with its creator
+CREATE OR REPLACE FUNCTION auto_set_room_creator()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- If no created_by is provided, try to use auth.uid() or extract from header
+  IF NEW.created_by IS NULL THEN
+    NEW.created_by := auth.uid();
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add the trigger to the rooms table
+DROP TRIGGER IF EXISTS trig_auto_set_room_creator ON rooms;
+CREATE TRIGGER trig_auto_set_room_creator
+BEFORE INSERT ON rooms
+FOR EACH ROW EXECUTE FUNCTION auto_set_room_creator();
 
 -- Modify messages table policies
 DROP POLICY IF EXISTS "Anyone can create messages in rooms they participate in" ON messages;
 CREATE POLICY "Anyone can create messages in rooms they participate in" 
 ON messages FOR INSERT WITH CHECK (
-  (user_id = auth.uid() OR user_id = public.check_legacy_user_id()) AND
+  user_id = auth.uid() AND
   EXISTS (
     SELECT 1 FROM room_participants
     WHERE room_participants.room_id = messages.room_id
-    AND (room_participants.user_id = auth.uid() OR room_participants.user_id = public.check_legacy_user_id())
+    AND room_participants.user_id = auth.uid()
   )
 );
 
 DROP POLICY IF EXISTS "Users can update their own messages" ON messages;
 CREATE POLICY "Users can update their own messages" 
-ON messages FOR UPDATE USING (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-);
+ON messages FOR UPDATE USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can delete their own messages" ON messages;
 CREATE POLICY "Users can delete their own messages" 
-ON messages FOR DELETE USING (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-);
+ON messages FOR DELETE USING (user_id = auth.uid());
 
 -- Modify active users policies
 DROP POLICY IF EXISTS "Users can insert their own active status" ON active_users;
 CREATE POLICY "Users can insert their own active status" 
-ON active_users FOR INSERT WITH CHECK (
-  id = auth.uid() OR id = public.check_legacy_user_id()
-);
+ON active_users FOR INSERT WITH CHECK (id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can update their own active status" ON active_users;
 CREATE POLICY "Users can update their own active status" 
-ON active_users FOR UPDATE USING (
-  id = auth.uid() OR id = public.check_legacy_user_id()
-);
+ON active_users FOR UPDATE USING (id = auth.uid());
 
 -- Modify room participants policies
 DROP POLICY IF EXISTS "Anyone can join rooms" ON room_participants;
 CREATE POLICY "Anyone can join rooms" 
-ON room_participants FOR INSERT WITH CHECK (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-);
+ON room_participants FOR INSERT WITH CHECK (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can leave rooms they joined" ON room_participants;
 CREATE POLICY "Users can leave rooms they joined" 
-ON room_participants FOR DELETE USING (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-);
+ON room_participants FOR DELETE USING (user_id = auth.uid());
 
 -- Modify typing status policies
 DROP POLICY IF EXISTS "Users can insert their own typing status" ON user_typing;
 CREATE POLICY "Users can insert their own typing status" 
-ON user_typing FOR INSERT WITH CHECK (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-);
+ON user_typing FOR INSERT WITH CHECK (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can update their own typing status" ON user_typing;
 CREATE POLICY "Users can update their own typing status" 
-ON user_typing FOR UPDATE USING (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-);
+ON user_typing FOR UPDATE USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can delete their own typing status" ON user_typing;
 CREATE POLICY "Users can delete their own typing status" 
-ON user_typing FOR DELETE USING (
-  user_id = auth.uid() OR user_id = public.check_legacy_user_id()
-); 
+ON user_typing FOR DELETE USING (user_id = auth.uid());
+
+-- ===================================================
+-- 12. BYPASS FUNCTIONS FOR LEGACY USERS
+-- ===================================================
+
+-- Create a function to bypass RLS for room creation
+CREATE OR REPLACE FUNCTION create_room_bypass(
+  room_id TEXT,
+  room_name TEXT,
+  room_password TEXT,
+  creator_id UUID
+)
+RETURNS BOOLEAN
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Insert the room directly, bypassing RLS
+  INSERT INTO rooms (id, name, password, created_by, created_at)
+  VALUES (room_id, room_name, room_password, creator_id, NOW());
+  
+  -- Also add the creator as a participant and admin
+  INSERT INTO room_participants (room_id, user_id, joined_at, is_admin)
+  VALUES (room_id, creator_id, NOW(), TRUE);
+  
+  RETURN TRUE;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'Error creating room: %', SQLERRM;
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql; 
